@@ -2,6 +2,7 @@ const { Router } = require('express');
 const exerciseLibrary = require('../db/repos/exerciseLibrary');
 const workoutPlanner = require('../services/workoutPlanner');
 const ai = require('../services/ai');
+const { allocateBatch } = require('../services/proposalBatch');
 const { buildContext } = require('../services/context');
 
 const router = Router();
@@ -38,7 +39,8 @@ router.post('/', (req, res) => {
   res.status(201).json(created);
 });
 
-// Reponer el catálogo con IA: genera hasta 10 propuestas según el déficit.
+// Reponer el catálogo con IA: genera al menos 10 propuestas y, si el déficit es
+// mayor, exactamente las necesarias (faltan 30 → 30). Reparto proporcional al déficit.
 router.post('/proposals', async (req, res) => {
   try {
     if (!ai.isConfigured()) {
@@ -50,14 +52,8 @@ router.post('/proposals', async (req, res) => {
       return res.json({ created: [], message: 'El catálogo ya tiene sus 30 ejercicios activos' });
     }
 
-    const batch = {};
-    let budget = 10;
-    for (const block of workoutPlanner.BLOCKS) {
-      const take = Math.min(deficit[block], budget);
-      if (take > 0) batch[block] = take;
-      budget -= take;
-      if (budget <= 0) break;
-    }
+    const target = Math.max(10, total);
+    const batch = allocateBatch(deficit, workoutPlanner.BLOCKS, target);
     const wanted = Object.values(batch).reduce((a, b) => a + b, 0);
     if (!wanted) return res.json({ created: [] });
 

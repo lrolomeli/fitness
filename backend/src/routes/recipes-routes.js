@@ -3,6 +3,7 @@ const recipes = require('../db/repos/recipes');
 const { estimateMacros } = require('../services/estimator');
 const planner = require('../services/planner');
 const ai = require('../services/ai');
+const { allocateBatch } = require('../services/proposalBatch');
 const { buildContext } = require('../services/context');
 
 const router = Router();
@@ -61,7 +62,8 @@ router.post('/', (req, res) => {
   res.status(201).json(created);
 });
 
-// Reponer el recetario con IA: genera hasta 10 propuestas según el déficit.
+// Reponer el recetario con IA: genera al menos 10 propuestas y, si el déficit es
+// mayor, exactamente las necesarias (faltan 30 → 30). Reparto proporcional al déficit.
 router.post('/proposals', async (req, res) => {
   try {
     if (!ai.isConfigured()) {
@@ -73,15 +75,8 @@ router.post('/proposals', async (req, res) => {
       return res.json({ created: [], message: 'El recetario ya tiene sus 30 recetas activas' });
     }
 
-    // Reparte hasta 10 propuestas por corrida, priorizando los slots con déficit.
-    const batch = {};
-    let budget = 10;
-    for (const slot of planner.SLOT_ORDER) {
-      const take = Math.min(deficit[slot], budget);
-      if (take > 0) batch[slot] = take;
-      budget -= take;
-      if (budget <= 0) break;
-    }
+    const target = Math.max(10, total);
+    const batch = allocateBatch(deficit, planner.SLOT_ORDER, target);
     const wanted = Object.values(batch).reduce((a, b) => a + b, 0);
     if (!wanted) return res.json({ created: [] });
 
