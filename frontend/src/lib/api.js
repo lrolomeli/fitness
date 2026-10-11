@@ -11,7 +11,12 @@ export async function apiFetch(url, options = {}) {
   const data = await res.json().catch(() => null);
 
   if (!res.ok) {
-    const message = data?.detail || data?.error || `Error ${res.status}`;
+    const message =
+      data?.detail ||
+      data?.error ||
+      (res.status === 429
+        ? 'Demasiadas solicitudes, espera un momento e intenta de nuevo.'
+        : `Error ${res.status}`);
     const error = new Error(message);
     error.status = res.status;
     error.data = data;

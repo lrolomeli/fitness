@@ -1,11 +1,12 @@
 const { Router } = require("express");
+const { loginLimiter } = require("../middleware/rateLimiter");
 const router = Router();
 
 const ADMIN_USER = process.env.ADMIN_USER || "admin";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "1234";
 
 // 🔑 login
-router.post("/login", (req, res) => {
+router.post("/login", loginLimiter, (req, res) => {
   const { username, password } = req.body;
 
   // ⚠️ replace later with DB + hashed password
