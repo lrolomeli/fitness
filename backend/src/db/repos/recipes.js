@@ -113,8 +113,11 @@ function upsertRecipe(recipe) {
 
   const existing = findByTitle(clean);
   if (existing) {
-    if (status && STATUSES.includes(status) && status !== existing.status) {
-      setStatus(existing.id, status);
+    // Nunca degradar una receta ya curada: el barrido de comidas y las
+    // propuestas la reinsertan como 'proposed' y no deben des-aprobar lo que el
+    // usuario ya activó. Solo se promueve a 'active' cuando se pide explícito.
+    if (status === 'active' && existing.status !== 'active') {
+      setStatus(existing.id, 'active');
       return get(existing.id);
     }
     return existing;
