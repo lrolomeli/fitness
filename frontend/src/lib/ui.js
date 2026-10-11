@@ -22,3 +22,12 @@ export const SLOT_LABELS = {
 };
 
 export const SLOT_ORDER = ['breakfast', 'lunch', 'dinner', 'snack'];
+
+export const BLOCK_LABELS = {
+  empuje: 'Empuje',
+  traccion: 'Tracción',
+  pierna: 'Pierna',
+  core: 'Core',
+};
+
+export const BLOCK_ORDER = ['empuje', 'traccion', 'pierna', 'core'];

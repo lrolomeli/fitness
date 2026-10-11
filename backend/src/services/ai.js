@@ -1,5 +1,4 @@
 const { GoogleGenAI } = require('@google/genai');
-const planner = require('./planner');
 
 const DEFAULT_MODEL = 'gemini-3.1-flash-lite';
 // Modelos que ya no están disponibles para proyectos nuevos: si un .env antiguo
@@ -51,200 +50,227 @@ async function generateJson({ system, prompt, schema }) {
 // =========================
 // Esquemas de salida
 // =========================
-const MEAL_SCHEMA = {
-  type: 'object',
-  properties: {
-    days: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          day: { type: 'integer', description: '0 = lunes ... 6 = domingo' },
-          meals: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                slot: { type: 'string', enum: ['breakfast', 'lunch', 'dinner', 'snack'] },
-                title: { type: 'string' },
-                description: { type: 'string' },
-                ingredients: { type: 'array', items: { type: 'string' } },
-                kcal: { type: 'integer' },
-                protein_g: { type: 'integer' },
-                carbs_g: { type: 'integer' },
-                fat_g: { type: 'integer' },
-              },
-              required: ['slot', 'title', 'ingredients', 'kcal', 'protein_g', 'carbs_g', 'fat_g'],
-            },
-          },
-        },
-        required: ['day', 'meals'],
-      },
-    },
-  },
-  required: ['days'],
+const EXERCISE_FIELDS = {
+  name: { type: 'string' },
+  block: { type: 'string', enum: ['empuje', 'traccion', 'pierna', 'core'] },
+  equipment: { type: 'string' },
+  description: { type: 'string' },
 };
 
-const WORKOUT_SCHEMA = {
+const EXERCISE_PROPOSAL_SCHEMA = {
   type: 'object',
   properties: {
-    days: {
+    exercises: {
       type: 'array',
       items: {
         type: 'object',
-        properties: {
-          day: { type: 'integer', description: '0 = lunes ... 6 = domingo' },
-          type: { type: 'string', enum: ['training', 'rest'] },
-          title: { type: 'string' },
-          focus: { type: 'string' },
-          rir: { type: 'string' },
-          exercises: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                name: { type: 'string' },
-                muscle: { type: 'string' },
-                sets: { type: 'integer' },
-                reps: { type: 'string' },
-                suggested_weight_kg: { type: 'number' },
-                rir: { type: 'string' },
-                notes: { type: 'string' },
-              },
-              required: ['name', 'sets', 'reps'],
-            },
-          },
-        },
-        required: ['day', 'type'],
+        properties: EXERCISE_FIELDS,
+        required: ['name', 'block'],
       },
     },
   },
-  required: ['days'],
+  required: ['exercises'],
+};
+
+const EXERCISE_SWAP_SCHEMA = {
+  type: 'object',
+  properties: EXERCISE_FIELDS,
+  required: ['name', 'block'],
+};
+
+const RECIPE_FIELDS = {
+  slot: { type: 'string', enum: ['breakfast', 'lunch', 'dinner', 'snack'] },
+  title: { type: 'string' },
+  description: { type: 'string' },
+  ingredients: { type: 'array', items: { type: 'string' } },
+  kcal: { type: 'integer' },
+  protein_g: { type: 'integer' },
+  carbs_g: { type: 'integer' },
+  fat_g: { type: 'integer' },
+};
+
+const RECIPE_PROPOSAL_SCHEMA = {
+  type: 'object',
+  properties: {
+    recipes: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: RECIPE_FIELDS,
+        required: ['slot', 'title', 'ingredients', 'kcal', 'protein_g', 'carbs_g', 'fat_g'],
+      },
+    },
+  },
+  required: ['recipes'],
+};
+
+const MEAL_SWAP_SCHEMA = {
+  type: 'object',
+  properties: RECIPE_FIELDS,
+  required: ['slot', 'title', 'ingredients', 'kcal', 'protein_g', 'carbs_g', 'fat_g'],
 };
 
 // =========================
 // Prompts
 // =========================
-const MEAL_SYSTEM =
-  'Eres un nutricionista deportivo. Diseñas dietas semanales prácticas para ganar masa muscular, ' +
-  'con ingredientes comunes de supermercado, en español y con porciones realistas. Respetas estrictamente ' +
-  'las restricciones y alimentos vetados del usuario.';
+const RECIPE_SYSTEM =
+  'Eres un nutricionista deportivo. Propones platillos prácticos para ganar masa muscular, ' +
+  'con ingredientes comunes de supermercado, en español y con porciones realistas. Respetas ' +
+  'estrictamente las restricciones y alimentos vetados del usuario y evitas lo que no le gusta.';
 
-const WORKOUT_SYSTEM =
-  'Eres un entrenador personal. Diseñas rutinas semanales de hipertrofia con sobrecarga progresiva, ' +
-  'ejercicios comunes de gimnasio, en español, ajustando RIR y volumen a la fase del mesociclo.';
+const EXERCISE_SYSTEM =
+  'Eres un entrenador personal. Propones ejercicios de hipertrofia con nombre común de gimnasio, ' +
+  'en español. Clasificas cada ejercicio en uno de estos bloques: empuje (pecho, hombro, tríceps), ' +
+  'traccion (espalda, bíceps), pierna (cuádriceps, femoral, glúteo, gemelo) o core (abdominales).';
 
 function listBlock(title, items) {
   if (!items || !items.length) return '';
   return `\n${title}: ${items.join(', ')}`;
 }
 
-function buildMealPrompt(ctx) {
+const SLOT_LABELS = {
+  breakfast: 'desayuno',
+  lunch: 'comida',
+  dinner: 'cena',
+  snack: 'snack',
+};
+
+function buildProposalPrompt(ctx, { deficit = {}, existingTitles = [] } = {}) {
   const t = ctx.targets;
+  const total = Object.values(deficit).reduce((a, b) => a + b, 0);
+  const detail = Object.entries(deficit)
+    .filter(([, n]) => n > 0)
+    .map(([slot, n]) => `${n} de ${SLOT_LABELS[slot] || slot}`)
+    .join(', ');
+
   return (
-    `Genera un plan de comidas para 7 días (día 0 = lunes).\n\n` +
-    `Objetivos diarios: ${t.target_calories} kcal — Proteína ${t.protein_g} g, ` +
+    `Propón ${total} platillos nuevos para el recetario: ${detail}.\n\n` +
+    `Objetivos diarios de referencia: ${t.target_calories} kcal — Proteína ${t.protein_g} g, ` +
     `Carbohidratos ${t.carbs_g} g, Grasa ${t.fat_g} g.\n` +
     `Fase actual: ${ctx.phaseName}. ${ctx.phaseNutrition}\n` +
-    `Perfil: sexo ${ctx.sex || 'no especificado'}, peso ${ctx.weight_kg || '?'} kg, ` +
-    `experiencia ${ctx.experience_level || 'principiante'}, actividad ${ctx.activity_level || 'moderada'}.\n` +
-    `Cada día incluye desayuno (breakfast), comida (lunch), cena (dinner) y una colación (snack).` +
+    `Perfil: sexo ${ctx.sex || 'no especificado'}, peso ${ctx.weight_kg || '?'} kg.\n` +
     listBlock('Alimentos favoritos', ctx.favorites) +
     listBlock('VETADOS (no usar nunca)', ctx.banned) +
     listBlock('Restricciones', ctx.restrictions) +
     listBlock('Le gustaron antes', ctx.liked) +
     listBlock('No le gustaron (evitar)', ctx.disliked) +
-    listBlock('Recetario que ya le gustó (reutiliza o adapta estos platillos)', ctx.library) +
-    `\n\nReparte las calorías y macros para acercarte lo más posible al objetivo diario. ` +
-    `Los macros de cada platillo deben ser coherentes con los ingredientes. ` +
-    `Varía los platillos a lo largo de la semana y prioriza reutilizar los del recetario.`
+    listBlock('Platillos que ya tiene (NO repetir estos títulos)', existingTitles) +
+    `\n\nCada platillo debe indicar su momento del día (slot). No repitas títulos existentes ni entre sí. ` +
+    `Los macros deben ser coherentes con los ingredientes.`
   );
 }
 
-function buildWorkoutPrompt(ctx) {
+function buildSwapPrompt(ctx, current, { instruction, usedTitles = [] } = {}) {
+  const t = ctx.targets;
   return (
-    `Genera una rutina de entrenamiento para 7 días (día 0 = lunes).\n\n` +
-    `Objetivo: ganar masa muscular. Fase actual: ${ctx.phaseName} (${ctx.phaseTraining}). RIR objetivo: ${ctx.phaseRir}.\n` +
+    `Sustituye UNA comida del plan.\n\n` +
+    `Momento: ${SLOT_LABELS[current.slot] || current.slot}. Platillo actual: "${current.title}" ` +
+    `(${current.kcal} kcal, P ${current.protein_g}, C ${current.carbs_g}, G ${current.fat_g}).\n` +
+    `Devuelve un platillo distinto para ese mismo momento.\n` +
+    (instruction ? `Petición del usuario: "${instruction}".\n` : '') +
+    `Fase actual: ${ctx.phaseName}. Objetivos diarios: ${t.target_calories} kcal. ` +
+    `Apunta a ~${Math.round(t.target_calories * 0.28)} kcal para este platillo.\n` +
+    listBlock('VETADOS (no usar nunca)', ctx.banned) +
+    listBlock('Restricciones', ctx.restrictions) +
+    listBlock('Alimentos favoritos', ctx.favorites) +
+    listBlock('No le gustaron (evitar)', ctx.disliked) +
+    listBlock('Platillos ya usados esta semana (evitar repetir)', usedTitles) +
+    `\n\nNo repitas el platillo actual ni los ya usados.`
+  );
+}
+
+const BLOCK_LABELS = { empuje: 'empuje', traccion: 'tracción', pierna: 'pierna', core: 'core' };
+
+function buildExerciseProposalPrompt(ctx, { deficit = {}, existingNames = [] } = {}) {
+  const total = Object.values(deficit).reduce((a, b) => a + b, 0);
+  const detail = Object.entries(deficit)
+    .filter(([, n]) => n > 0)
+    .map(([block, n]) => `${n} de ${BLOCK_LABELS[block] || block}`)
+    .join(', ');
+
+  return (
+    `Propón ${total} ejercicios nuevos para el catálogo: ${detail}.\n\n` +
+    `Fase actual: ${ctx.phaseName} (${ctx.phaseTraining}). RIR objetivo: ${ctx.phaseRir}.\n` +
     `Perfil: experiencia ${ctx.experience_level || 'principiante'}, peso ${ctx.weight_kg || '?'} kg.\n` +
-    `Marca días de entrenamiento (type "training") y de descanso (type "rest"). ` +
-    `Incluye 4-5 días de entrenamiento según la fase, con ejercicios, series, repeticiones, ` +
-    `peso sugerido (si no aplica, 0) y RIR. Puedes incluir sugerencias de progresión en las notas.`
+    listBlock('Ejercicios que ya tiene (NO repetir estos nombres)', existingNames) +
+    `\n\nCada ejercicio debe indicar su bloque (empuje, traccion, pierna o core) y el equipo típico ` +
+    `(barra, mancuernas, polea, máquina o peso corporal). No repitas nombres existentes ni entre sí.`
+  );
+}
+
+function buildExerciseSwapPrompt(ctx, current, { instruction, excludeNames = [] } = {}) {
+  return (
+    `Sustituye UN ejercicio de la rutina.\n\n` +
+    `Ejercicio actual: "${current.name}" (bloque ${BLOCK_LABELS[current.muscle] || current.muscle}).\n` +
+    `Devuelve un ejercicio distinto del MISMO bloque.\n` +
+    (instruction ? `Petición del usuario: "${instruction}".\n` : '') +
+    `Fase actual: ${ctx.phaseName} (${ctx.phaseTraining}). RIR objetivo: ${ctx.phaseRir}.\n` +
+    listBlock('Ejercicios ya usados (evitar repetir)', excludeNames) +
+    `\n\nNo repitas el actual ni los ya usados.`
   );
 }
 
 // =========================
 // API pública
 // =========================
-async function generateMealPlan(ctx) {
-  if (isConfigured()) {
-    try {
-      const generated = await generateJson({
-        system: MEAL_SYSTEM,
-        prompt: buildMealPrompt(ctx),
-        schema: MEAL_SCHEMA,
-      });
-      return { ...generated, provider: 'gemini' };
-    } catch (err) {
-      const fallback = await planner.generateMealPlan(ctx);
-      return { ...fallback, fallbackError: err.message };
-    }
-  }
-  return planner.generateMealPlan(ctx);
+
+// Genera propuestas de recetas para reponer el recetario curado.
+// Devuelve un array (posiblemente vacío) de recetas SIN guardar.
+async function generateRecipeProposals(ctx, opts = {}) {
+  if (!isConfigured()) return [];
+  const deficit = opts.deficit || {};
+  const total = Object.values(deficit).reduce((a, b) => a + b, 0);
+  if (!total) return [];
+  const generated = await generateJson({
+    system: RECIPE_SYSTEM,
+    prompt: buildProposalPrompt(ctx, { ...opts, deficit }),
+    schema: RECIPE_PROPOSAL_SCHEMA,
+  });
+  return Array.isArray(generated.recipes) ? generated.recipes : [];
 }
 
-async function generateWorkoutPlan(ctx) {
-  if (!isConfigured()) return mockWorkoutPlan(ctx);
-  return generateJson({ system: WORKOUT_SYSTEM, prompt: buildWorkoutPrompt(ctx), schema: WORKOUT_SCHEMA });
+// Genera una alternativa para una sola comida. Devuelve la comida o null.
+async function generateMealSwap(ctx, current, opts = {}) {
+  if (!isConfigured()) return null;
+  const generated = await generateJson({
+    system: RECIPE_SYSTEM,
+    prompt: buildSwapPrompt(ctx, current, opts),
+    schema: MEAL_SWAP_SCHEMA,
+  });
+  if (!generated || !generated.title) return null;
+  return { ...generated, slot: current.slot };
 }
 
-// =========================
-// Fallback de entrenamiento (sin API key)
-// =========================
-const TRAINING_DAYS = [
-  { title: 'Full body A', focus: 'Cuerpo completo', exercises: ['Sentadilla', 'Press banca', 'Remo con barra', 'Press militar', 'Curl bíceps'] },
-  { title: 'Full body B', focus: 'Cuerpo completo', exercises: ['Peso muerto', 'Press inclinado', 'Jalón al pecho', 'Elevaciones laterales', 'Extensión tríceps'] },
-  { title: 'Torso', focus: 'Empuje y jalón', exercises: ['Press banca', 'Remo con mancuerna', 'Fondos', 'Curl martillo', 'Face pull'] },
-  { title: 'Pierna', focus: 'Tren inferior', exercises: ['Prensa', 'Peso muerto rumano', 'Extensión de cuádriceps', 'Curl femoral', 'Gemelos'] },
-];
+async function generateExerciseProposals(ctx, opts = {}) {
+  if (!isConfigured()) return [];
+  const deficit = opts.deficit || {};
+  const total = Object.values(deficit).reduce((a, b) => a + b, 0);
+  if (!total) return [];
+  const generated = await generateJson({
+    system: EXERCISE_SYSTEM,
+    prompt: buildExerciseProposalPrompt(ctx, { ...opts, deficit }),
+    schema: EXERCISE_PROPOSAL_SCHEMA,
+  });
+  return Array.isArray(generated.exercises) ? generated.exercises : [];
+}
 
-function mockWorkoutPlan(ctx) {
-  const phase = ctx.phase;
-  const sets = phase >= 2 ? 4 : 3;
-  const reps = phase >= 2 ? '6-8' : '8-12';
-  const days = [];
-  for (let day = 0; day < 7; day += 1) {
-    const isRest = day === 3 || day === 6 || day >= 5;
-    if (isRest) {
-      days.push({ day, type: 'rest', title: 'Descanso', focus: 'Recuperación' });
-      continue;
-    }
-    const template = TRAINING_DAYS[day % TRAINING_DAYS.length];
-    days.push({
-      day,
-      type: 'training',
-      title: template.title,
-      focus: template.focus,
-      rir: ctx.phaseRir,
-      exercises: template.exercises.map((name) => ({
-        name,
-        muscle: '',
-        sets,
-        reps,
-        suggested_weight_kg: 0,
-        rir: ctx.phaseRir,
-        notes: 'Ejemplo generado sin API key.',
-      })),
-    });
-  }
-  return { days };
+// Genera una alternativa para un ejercicio. Devuelve el ejercicio o null.
+async function generateExerciseSwap(ctx, current, opts = {}) {
+  if (!isConfigured()) return null;
+  const generated = await generateJson({
+    system: EXERCISE_SYSTEM,
+    prompt: buildExerciseSwapPrompt(ctx, current, opts),
+    schema: EXERCISE_SWAP_SCHEMA,
+  });
+  if (!generated || !generated.name) return null;
+  return generated;
 }
 
 module.exports = {
   MODEL,
-  MEAL_SCHEMA,
-  WORKOUT_SCHEMA,
   isConfigured,
-  generateMealPlan,
-  generateWorkoutPlan,
-  mockWorkoutPlan,
+  generateRecipeProposals,
+  generateMealSwap,
+  generateExerciseProposals,
+  generateExerciseSwap,
 };

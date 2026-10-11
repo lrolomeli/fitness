@@ -2,7 +2,7 @@ const { Router } = require('express');
 const mealPlans = require('../db/repos/mealPlans');
 const meals = require('../db/repos/meals');
 const recipes = require('../db/repos/recipes');
-const ai = require('../services/ai');
+const planner = require('../services/planner');
 const { getProvider } = require('../services/recipes');
 const { buildContext } = require('../services/context');
 const progression = require('../services/progression');
@@ -22,17 +22,20 @@ router.get('/:id', (req, res) => {
 router.post('/generate', async (req, res) => {
   const weekStart = req.body?.week_start || progression.currentWeekStart();
   try {
-    // Barrido: guarda en el recetario las comidas no rechazadas.
+    // Barrido: guarda en el recetario (como propuestas) las comidas no rechazadas.
     recipes.sweepFromMeals(meals.listAll(), 'sweep');
 
     const ctx = buildContext();
-    const generated = await ai.generateMealPlan(ctx.meal);
+    const deficit = planner.poolDeficit();
+    const missing = Object.values(deficit).reduce((a, b) => a + b, 0);
+
+    // La semana se arma SOLO con el recetario curado (activas) + proveedor/semillas.
+    const generated = await planner.generateMealPlan(ctx.meal);
 
     const provider = getProvider();
-    let source;
-    if (generated.provider === 'gemini') source = `Gemini (${ai.MODEL})`;
-    else if (provider) source = `planner + ${provider.name} (macros estimados)`;
-    else source = 'recetario local';
+    const source = provider
+      ? `recetario + ${provider.name} (macros estimados)`
+      : 'recetario local';
 
     const plan = mealPlans.create({
       week_start: weekStart,
@@ -42,7 +45,7 @@ router.post('/generate', async (req, res) => {
       carbs_g: ctx.targets.carbs_g,
       fat_g: ctx.targets.fat_g,
       status: 'active',
-      notes: `Generado con ${source}`,
+      notes: `Generado desde ${source}`,
     });
 
     (generated.days || []).forEach((day) => {
@@ -51,7 +54,7 @@ router.post('/generate', async (req, res) => {
       });
     });
 
-    res.status(201).json({ ...plan, meals: meals.listByPlan(plan.id) });
+    res.status(201).json({ ...plan, meals: meals.listByPlan(plan.id), missing });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
   }

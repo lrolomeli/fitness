@@ -7,11 +7,15 @@ import MealsSection from './sections/MealsSection';
 import WorkoutsSection from './sections/WorkoutsSection';
 import ProgressSection from './sections/ProgressSection';
 import PreferencesSection from './sections/PreferencesSection';
+import RecipesSection from './sections/RecipesSection';
+import ExercisesSection from './sections/ExercisesSection';
 
 const TABS = [
   { id: 'perfil', label: 'Perfil' },
   { id: 'comidas', label: 'Comidas' },
+  { id: 'recetario', label: 'Recetario' },
   { id: 'entreno', label: 'Entreno' },
+  { id: 'ejercicios', label: 'Ejercicios' },
   { id: 'progreso', label: 'Progreso' },
   { id: 'preferencias', label: 'Gustos' },
 ];
@@ -61,7 +65,9 @@ export default function Dashboard() {
 
         {active === 'perfil' && <ProfileSection state={state} onSaved={refresh} />}
         {active === 'comidas' && <MealsSection state={state} onChanged={refresh} />}
+        {active === 'recetario' && <RecipesSection state={state} onChanged={refresh} />}
         {active === 'entreno' && <WorkoutsSection />}
+        {active === 'ejercicios' && <ExercisesSection state={state} onChanged={refresh} />}
         {active === 'progreso' && <ProgressSection />}
         {active === 'preferencias' && <PreferencesSection onChanged={refresh} />}
       </main>

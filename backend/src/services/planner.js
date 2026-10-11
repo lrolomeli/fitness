@@ -10,6 +10,10 @@ const SLOT_DIST = {
   snack: 0.1,
 };
 
+// Objetivo del recetario curado: 30 recetas activas repartidas por momento.
+const SLOT_TARGETS = { breakfast: 7, lunch: 8, dinner: 8, snack: 7 };
+const POOL_TARGET = Object.values(SLOT_TARGETS).reduce((a, b) => a + b, 0);
+
 // Semillas para completar la variedad cuando el recetario/proveedor no alcanza
 // las 7 opciones por momento del día.
 const SEED = [
@@ -85,8 +89,40 @@ function scaleForTarget(recipe, targetKcal) {
   };
 }
 
-async function poolForSlot(slot, banned) {
-  const pool = recipes.list(slot).filter((r) => !isBanned(r, banned));
+// Cobertura del recetario curado (solo recetas activas) por momento del día.
+function coverageBySlot() {
+  const counts = recipes.countActiveBySlot();
+  return SLOT_ORDER.reduce((acc, slot) => {
+    acc[slot] = counts[slot] || 0;
+    return acc;
+  }, {});
+}
+
+function poolDeficit() {
+  const counts = recipes.countActiveBySlot();
+  return SLOT_ORDER.reduce((acc, slot) => {
+    const have = counts[slot] || 0;
+    acc[slot] = Math.max(0, SLOT_TARGETS[slot] - have);
+    return acc;
+  }, {});
+}
+
+// Alternativas locales (solo recetas activas) para un momento del día,
+// excluyendo vetados y títulos ya usados.
+function localAlternatives(slot, { banned = [], excludeTitles = [] } = {}) {
+  const excluded = new Set(excludeTitles.map((t) => String(t).trim().toLowerCase()));
+  return recipes
+    .listActive(slot)
+    .filter((r) => !isBanned(r, banned))
+    .filter((r) => !excluded.has(String(r.title).trim().toLowerCase()));
+}
+
+async function poolForSlot(slot, banned, excludeTitles = []) {
+  const excluded = new Set(excludeTitles.map((t) => String(t).trim().toLowerCase()));
+  const pool = recipes
+    .listActive(slot)
+    .filter((r) => !isBanned(r, banned))
+    .filter((r) => !excluded.has(String(r.title).trim().toLowerCase()));
 
   const provider = getProvider();
   if (pool.length < 7 && provider) {
@@ -116,7 +152,7 @@ async function poolForSlot(slot, banned) {
     for (const seed of SEED_RECIPES.filter((s) => s.slot === slot)) {
       if (pool.length >= 7) break;
       const key = seed.title.trim().toLowerCase();
-      if (seen.has(key) || isBanned(seed, banned)) continue;
+      if (seen.has(key) || excluded.has(key) || isBanned(seed, banned)) continue;
       seen.add(key);
       pool.push(seed);
     }
@@ -136,6 +172,7 @@ async function generateMealPlan(ctx) {
 
   const days = [];
   const cursor = {};
+  const suggestedIds = new Set();
 
   for (let day = 0; day < 7; day += 1) {
     const dayMeals = [];
@@ -145,6 +182,7 @@ async function generateMealPlan(ctx) {
       const idx = (cursor[slot] || 0) % pool.length;
       const recipe = pool[idx];
       cursor[slot] = (cursor[slot] || 0) + 1;
+      if (recipe.id) suggestedIds.add(recipe.id);
 
       const targetKcal = Math.round(targets.target_calories * SLOT_DIST[slot]);
       const scaled = scaleForTarget(recipe, targetKcal);
@@ -165,7 +203,20 @@ async function generateMealPlan(ctx) {
     days.push({ day, meals: dayMeals });
   }
 
+  recipes.markSuggested([...suggestedIds]);
+
   return { days, provider: getProvider() ? getProvider().name : null };
 }
 
-module.exports = { generateMealPlan, SLOT_ORDER, SLOT_DIST };
+module.exports = {
+  generateMealPlan,
+  poolForSlot,
+  localAlternatives,
+  coverageBySlot,
+  poolDeficit,
+  scaleForTarget,
+  SLOT_ORDER,
+  SLOT_DIST,
+  SLOT_TARGETS,
+  POOL_TARGET,
+};

@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react';
 import Card from '../components/ui/Card';
 import Banner from '../components/ui/Banner';
 import Spinner from '../components/ui/Spinner';
-import Collapsible from '../components/ui/Collapsible';
 import BanModal from '../components/BanModal';
+import SwapModal from '../components/SwapModal';
 import { api } from '../lib/api';
-import { BTN, BTN_GHOST, BTN_DANGER, INPUT, LABEL, DAY_NAMES, SLOT_LABELS, SLOT_ORDER } from '../lib/ui';
+import { BTN, BTN_GHOST, INPUT, LABEL, DAY_NAMES, SLOT_LABELS, SLOT_ORDER } from '../lib/ui';
 
 const emptyForm = (meal) => ({
   title: meal.title || '',
@@ -16,11 +16,16 @@ const emptyForm = (meal) => ({
   fat_g: meal.fat_g ?? 0,
 });
 
-function MealRow({ meal, onFeedback, onBan, onSave, onUpdate }) {
+function MealRow({ meal, onFeedback, onBan, onSwap, onSave, onUpdate }) {
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [form, setForm] = useState(() => emptyForm(meal));
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    setSaved(false);
+  }, [meal.id, meal.title]);
 
   const vote = async (rating) => {
     if (busy) return;
@@ -30,10 +35,14 @@ function MealRow({ meal, onFeedback, onBan, onSave, onUpdate }) {
   };
 
   const save = async () => {
-    if (busy) return;
+    if (busy || saved) return;
     setBusy(true);
-    await onSave(meal);
-    setBusy(false);
+    try {
+      await onSave(meal);
+      setSaved(true);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const startEdit = () => {
@@ -144,11 +153,24 @@ function MealRow({ meal, onFeedback, onBan, onSave, onUpdate }) {
             <p className="mt-1 text-xs text-white/40">{meal.ingredients.join(', ')}</p>
           )}
           <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => onSwap(meal)}
+              disabled={busy}
+              className={BTN_GHOST}
+            >
+              Cambiar
+            </button>
             <button type="button" onClick={startEdit} disabled={busy} className={BTN_GHOST}>
               Editar
             </button>
-            <button type="button" onClick={save} disabled={busy} className={BTN_GHOST}>
-              Guardar receta
+            <button
+              type="button"
+              onClick={save}
+              disabled={busy || saved}
+              className={BTN_GHOST}
+            >
+              {saved ? 'Guardado ✓' : 'Guardar'}
             </button>
             {feedback === 'down' && (
               <button
@@ -199,9 +221,9 @@ export default function MealsSection({ state, onChanged }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [banMeal, setBanMeal] = useState(null);
-  const [recipes, setRecipes] = useState([]);
   const [notice, setNotice] = useState('');
+  const [banMeal, setBanMeal] = useState(null);
+  const [swapMeal, setSwapMeal] = useState(null);
 
   const loadPlan = async () => {
     const plans = await api.get('/api/plans');
@@ -213,14 +235,10 @@ export default function MealsSection({ state, onChanged }) {
     setPlan(detail);
   };
 
-  const loadRecipes = async () => {
-    setRecipes(await api.get('/api/recipes'));
-  };
-
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    Promise.all([loadPlan(), loadRecipes()])
+    loadPlan()
       .catch((err) => {
         if (alive) setError(err.message);
       })
@@ -240,8 +258,12 @@ export default function MealsSection({ state, onChanged }) {
     try {
       const created = await api.post('/api/plans/generate', {});
       setPlan(created);
-      await loadRecipes();
       await onChanged?.();
+      if (created.missing > 0) {
+        setNotice(
+          `Semana generada desde tu recetario. Faltan ${created.missing} recetas activas para variar más.`
+        );
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -257,10 +279,7 @@ export default function MealsSection({ state, onChanged }) {
         meals: prev.meals.map((m) => (m.id === updated.id ? updated : m)),
       }));
       if (rating === 'down') setBanMeal(updated);
-      if (rating === 'up') {
-        await loadRecipes();
-        await onChanged?.();
-      }
+      if (rating === 'up') await onChanged?.();
     } catch (err) {
       setError(err.message);
     }
@@ -274,40 +293,39 @@ export default function MealsSection({ state, onChanged }) {
     }));
   };
 
-  const saveRecipe = async (meal) => {
+  const saveMeal = async (meal) => {
+    await api.post(`/api/meals/${meal.id}/save`, {});
+    await onChanged?.();
+  };
+
+  const saveWeek = async () => {
+    if (busy || !plan?.meals?.length) return;
+    setBusy(true);
+    setError('');
     setNotice('');
     try {
-      await api.post('/api/recipes', {
-        title: meal.title,
-        slot: meal.slot,
-        ingredients: meal.ingredients,
-        kcal: meal.kcal,
-        protein_g: meal.protein_g,
-        carbs_g: meal.carbs_g,
-        fat_g: meal.fat_g,
-      });
-      setNotice(`Guardado en tu recetario: ${meal.title}`);
-      await loadRecipes();
+      await Promise.all(plan.meals.map((m) => api.post(`/api/meals/${m.id}/save`, {})));
+      setNotice('Semana guardada en tu recetario como activas');
       await onChanged?.();
     } catch (err) {
       setError(err.message);
+    } finally {
+      setBusy(false);
     }
   };
 
-  const removeRecipe = async (id) => {
-    setNotice('');
-    try {
-      await api.delete(`/api/recipes/${id}`);
-      await loadRecipes();
-      await onChanged?.();
-    } catch (err) {
-      setError(err.message);
-    }
+  const onSwapped = async (updated) => {
+    setPlan((prev) => ({
+      ...prev,
+      meals: prev.meals.map((m) => (m.id === updated.id ? updated : m)),
+    }));
   };
 
   if (loading) return <Spinner />;
 
-  const provider = state?.recipeProvider;
+  const coverage = state?.recipeCoverage || {};
+  const totalActive = Object.values(coverage).reduce((a, b) => a + b, 0);
+  const poolTarget = state?.poolTarget ?? 30;
 
   return (
     <div className="flex flex-col gap-3.5">
@@ -317,9 +335,16 @@ export default function MealsSection({ state, onChanged }) {
       <Card
         title={plan ? `Semana del ${plan.week_start}` : 'Sin plan'}
         action={
-          <button type="button" onClick={generate} disabled={busy} className={BTN_GHOST}>
-            {busy ? 'Generando…' : plan ? 'Regenerar' : 'Generar semana'}
-          </button>
+          <div className="flex gap-2">
+            {plan && (
+              <button type="button" onClick={saveWeek} disabled={busy} className={BTN_GHOST}>
+                Guardar semana
+              </button>
+            )}
+            <button type="button" onClick={generate} disabled={busy} className={BTN_GHOST}>
+              {busy ? 'Generando…' : plan ? 'Regenerar' : 'Generar semana'}
+            </button>
+          </div>
         }
       >
         {plan ? (
@@ -334,8 +359,7 @@ export default function MealsSection({ state, onChanged }) {
           </p>
         )}
         <p className="mt-2 text-xs text-white/40">
-          Recetario: {state?.recipeCount ?? recipes.length} platillos · fuente externa:{' '}
-          {provider && provider !== 'none' ? provider : 'no configurada'}
+          Recetario activo: {totalActive}/{poolTarget} · gestiona tus recetas en la pestaña Recetario.
         </p>
       </Card>
 
@@ -354,7 +378,8 @@ export default function MealsSection({ state, onChanged }) {
                     meal={meal}
                     onFeedback={onFeedback}
                     onBan={setBanMeal}
-                    onSave={saveRecipe}
+                    onSwap={setSwapMeal}
+                    onSave={saveMeal}
                     onUpdate={updateMeal}
                   />
                 ))}
@@ -363,36 +388,8 @@ export default function MealsSection({ state, onChanged }) {
           );
         })}
 
-      <Collapsible title="Recetario" subtitle={`${recipes.length} platillos guardados`}>
-        {recipes.length === 0 ? (
-          <p className="py-3 text-center text-sm text-white/45">
-            Aún no hay platillos. Marca 👍 o pulsa «Guardar receta».
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {recipes.map((r) => (
-              <li
-                key={r.id}
-                className="flex items-start justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5"
-              >
-                <div className="min-w-0">
-                  <p className="break-words text-sm text-white">{r.title}</p>
-                  <p className="text-xs text-white/45">
-                    {SLOT_LABELS[r.slot] || r.slot} · {r.kcal} kcal · P {r.protein_g} C {r.carbs_g} G{' '}
-                    {r.fat_g}
-                    {r.source ? ` · ${r.source}` : ''}
-                  </p>
-                </div>
-                <button type="button" onClick={() => removeRecipe(r.id)} className={BTN_DANGER}>
-                  Quitar
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Collapsible>
-
       <BanModal meal={banMeal} onClose={() => setBanMeal(null)} onDone={onChanged} />
+      <SwapModal meal={swapMeal} onClose={() => setSwapMeal(null)} onSwapped={onSwapped} />
     </div>
   );
 }

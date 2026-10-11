@@ -28,6 +28,34 @@ function listExercises(workoutId) {
   );
 }
 
+function getExercise(id) {
+  return db.queryOne(DB_NAME, 'SELECT * FROM exercises WHERE id = ?', [id]);
+}
+
+function updateExercise(id, changes = {}) {
+  const current = getExercise(id);
+  if (!current) return null;
+  db.run(
+    DB_NAME,
+    `UPDATE exercises
+       SET name = ?, muscle = ?, sets = ?, reps = ?, suggested_weight_kg = ?, rir = ?, notes = ?
+     WHERE id = ?`,
+    [
+      changes.name !== undefined ? changes.name : current.name,
+      changes.muscle !== undefined ? changes.muscle : current.muscle,
+      changes.sets !== undefined ? changes.sets : current.sets,
+      changes.reps !== undefined ? changes.reps : current.reps,
+      changes.suggested_weight_kg !== undefined
+        ? changes.suggested_weight_kg
+        : current.suggested_weight_kg,
+      changes.rir !== undefined ? changes.rir : current.rir,
+      changes.notes !== undefined ? changes.notes : current.notes,
+      id,
+    ]
+  );
+  return getExercise(id);
+}
+
 function create(workout, exercises = []) {
   db.run(
     DB_NAME,
@@ -98,4 +126,13 @@ function removeByWeek(weekStart) {
   return { success: true };
 }
 
-module.exports = { listByWeek, latestWeekStart, get, create, replaceExercises, removeByWeek };
+module.exports = {
+  listByWeek,
+  latestWeekStart,
+  get,
+  getExercise,
+  updateExercise,
+  create,
+  replaceExercises,
+  removeByWeek,
+};

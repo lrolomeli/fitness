@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import Card from '../components/ui/Card';
 import Banner from '../components/ui/Banner';
 import Spinner from '../components/ui/Spinner';
+import ExerciseSwapModal from '../components/ExerciseSwapModal';
 import { api } from '../lib/api';
-import { INPUT, BTN, BTN_GHOST, BTN_DANGER, DAY_NAMES } from '../lib/ui';
+import { INPUT, BTN, BTN_GHOST, BTN_DANGER, DAY_NAMES, BLOCK_LABELS, BLOCK_ORDER } from '../lib/ui';
 
-const EMPTY_EX = { name: '', muscle: '', sets: 3, reps: '8-12', suggested_weight_kg: 0, rir: '', notes: '' };
+const EMPTY_EX = { name: '', muscle: 'empuje', sets: 3, reps: '8-12', suggested_weight_kg: 0, rir: '', notes: '' };
 
-function WorkoutDay({ workout }) {
+function WorkoutDay({ workout, catalog, onSwap }) {
   const [exercises, setExercises] = useState(workout.exercises || []);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -30,8 +31,25 @@ function WorkoutDay({ workout }) {
   const update = (index, key, value) =>
     setExercises((prev) => prev.map((ex, i) => (i === index ? { ...ex, [key]: value } : ex)));
 
-  const addEx = () => setExercises((prev) => [...prev, { ...EMPTY_EX }]);
+  const addEx = () => setExercises((prev) => [...prev, { ...EMPTY_EX, rir: workout.rir || '' }]);
   const removeEx = (index) => setExercises((prev) => prev.filter((_, i) => i !== index));
+
+  const addFromCatalog = (catalogId) => {
+    const pick = catalog.find((c) => String(c.id) === String(catalogId));
+    if (!pick) return;
+    setExercises((prev) => [
+      ...prev,
+      {
+        name: pick.name,
+        muscle: pick.block,
+        sets: 3,
+        reps: '8-12',
+        suggested_weight_kg: 0,
+        rir: workout.rir || '',
+        notes: pick.equipment ? `Equipo: ${pick.equipment}` : '',
+      },
+    ]);
+  };
 
   const save = async () => {
     setBusy(true);
@@ -74,11 +92,36 @@ function WorkoutDay({ workout }) {
                 placeholder="Ejercicio"
                 className={INPUT}
               />
+              {ex.id && onSwap && (
+                <button
+                  type="button"
+                  onClick={() => onSwap(workout.id, ex)}
+                  className={BTN_GHOST}
+                  title="Cambiar ejercicio"
+                >
+                  Cambiar
+                </button>
+              )}
               <button type="button" onClick={() => removeEx(i)} className={BTN_DANGER}>
                 ✕
               </button>
             </div>
             <div className="grid grid-cols-4 gap-1.5">
+              <label className="flex flex-col text-[0.6rem] uppercase tracking-wider text-white/45">
+                Bloque
+                <select
+                  value={BLOCK_ORDER.includes(ex.muscle) ? ex.muscle : ''}
+                  onChange={(e) => update(i, 'muscle', e.target.value)}
+                  className={INPUT}
+                >
+                  {!BLOCK_ORDER.includes(ex.muscle) && <option value="">—</option>}
+                  {BLOCK_ORDER.map((block) => (
+                    <option key={block} value={block} className="bg-[#1a1020]">
+                      {BLOCK_LABELS[block]}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <label className="flex flex-col text-[0.6rem] uppercase tracking-wider text-white/45">
                 Series
                 <input
@@ -107,7 +150,9 @@ function WorkoutDay({ workout }) {
                   className={INPUT}
                 />
               </label>
-              <label className="flex flex-col text-[0.6rem] uppercase tracking-wider text-white/45">
+            </div>
+            <div className="grid grid-cols-4 gap-1.5">
+              <label className="col-span-1 flex flex-col text-[0.6rem] uppercase tracking-wider text-white/45">
                 RIR
                 <input
                   type="text"
@@ -116,25 +161,68 @@ function WorkoutDay({ workout }) {
                   className={INPUT}
                 />
               </label>
+              <label className="col-span-3 flex flex-col text-[0.6rem] uppercase tracking-wider text-white/45">
+                Notas
+                <input
+                  type="text"
+                  value={ex.notes ?? ''}
+                  onChange={(e) => update(i, 'notes', e.target.value)}
+                  className={INPUT}
+                />
+              </label>
             </div>
           </div>
         ))}
       </div>
-      <button type="button" onClick={addEx} className={`${BTN_GHOST} mt-3 w-full`}>
-        + Agregar ejercicio
-      </button>
+
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+        <select
+          value=""
+          onChange={(e) => {
+            addFromCatalog(e.target.value);
+            e.target.value = '';
+          }}
+          className={`${INPUT} sm:flex-1`}
+        >
+          <option value="">＋ Agregar del catálogo…</option>
+          {BLOCK_ORDER.map((block) => {
+            const items = catalog.filter((c) => c.block === block);
+            if (!items.length) return null;
+            return (
+              <optgroup key={block} label={BLOCK_LABELS[block]} className="bg-[#1a1020]">
+                {items.map((c) => (
+                  <option key={c.id} value={c.id} className="bg-[#1a1020]">
+                    {c.name}
+                  </option>
+                ))}
+              </optgroup>
+            );
+          })}
+        </select>
+        <button type="button" onClick={addEx} className={BTN_GHOST}>
+          + Vacío
+        </button>
+      </div>
     </Card>
   );
 }
 
 export default function WorkoutsSection() {
   const [data, setData] = useState(null);
+  const [catalog, setCatalog] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [swapTarget, setSwapTarget] = useState(null);
 
   const load = async () => {
-    setData(await api.get('/api/workouts'));
+    const [workouts, exercises] = await Promise.all([
+      api.get('/api/workouts'),
+      api.get('/api/exercises'),
+    ]);
+    setData(workouts);
+    setCatalog(exercises.active || []);
   };
 
   useEffect(() => {
@@ -155,14 +243,31 @@ export default function WorkoutsSection() {
     if (busy) return;
     setBusy(true);
     setError('');
+    setNotice('');
     try {
       const created = await api.post('/api/workouts/generate', {});
-      setData(created);
+      setData({ week: created.week, days: created.days });
+      if (created.missing > 0) {
+        setNotice(
+          `Rutina generada desde tu catálogo. Faltan ${created.missing} ejercicios activos para variar más.`
+        );
+      }
     } catch (err) {
       setError(err.message);
     } finally {
       setBusy(false);
     }
+  };
+
+  const onSwapped = (workoutId, exerciseId, updated) => {
+    setData((prev) => ({
+      ...prev,
+      days: prev.days.map((w) =>
+        w.id === workoutId
+          ? { ...w, exercises: w.exercises.map((e) => (e.id === exerciseId ? updated : e)) }
+          : w
+      ),
+    }));
   };
 
   if (loading) return <Spinner />;
@@ -172,6 +277,7 @@ export default function WorkoutsSection() {
   return (
     <div className="flex flex-col gap-3.5">
       {error && <Banner variant="err">{error}</Banner>}
+      {notice && <Banner variant="ok">{notice}</Banner>}
 
       <Card
         title={data?.week ? `Rutina · semana del ${data.week}` : 'Sin rutina'}
@@ -188,14 +294,29 @@ export default function WorkoutsSection() {
         ) : (
           <p className="text-xs text-white/55">
             {days.filter((d) => d.type === 'training').length} días de entrenamiento ·{' '}
-            {days.filter((d) => d.type === 'rest').length} de descanso
+            {days.filter((d) => d.type === 'rest').length} de descanso · catálogo:{' '}
+            {catalog.length} ejercicios
           </p>
         )}
       </Card>
 
       {days.map((workout) => (
-        <WorkoutDay key={workout.id} workout={workout} />
+        <WorkoutDay
+          key={workout.id}
+          workout={workout}
+          catalog={catalog}
+          onSwap={(workoutId, exercise) => setSwapTarget({ workoutId, exercise })}
+        />
       ))}
+
+      <ExerciseSwapModal
+        workoutId={swapTarget?.workoutId}
+        exercise={swapTarget?.exercise}
+        onClose={() => setSwapTarget(null)}
+        onSwapped={(updated) =>
+          onSwapped(swapTarget.workoutId, swapTarget.exercise.id, updated)
+        }
+      />
     </div>
   );
 }
