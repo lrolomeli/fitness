@@ -359,7 +359,8 @@ export default function MealsSection({ state, onChanged }) {
           </p>
         )}
         <p className="mt-2 text-xs text-white/40">
-          Recetario activo: {totalActive}/{poolTarget} · gestiona tus recetas en la pestaña Recetario.
+          Recetario activo: {totalActive} receta{totalActive === 1 ? '' : 's'} (meta {poolTarget}) ·
+          gestiona tus recetas en la pestaña Recetario.
         </p>
       </Card>
 

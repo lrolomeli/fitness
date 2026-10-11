@@ -135,6 +135,21 @@ function splitString(text) {
   return { measure: '', name: s };
 }
 
+// Devuelve solo el nombre del ingrediente, sin cantidad ni unidad.
+// "170g pechuga de pollo" → "pechuga de pollo"; "2 rebanadas de pan" → "pan".
+function ingredientName(text) {
+  const original = String(text || '').trim();
+  if (!original) return '';
+  const stripped = original
+    .replace(
+      /^[\d.,/]+\s*(?:(?:kg|kilos?|g|gr|gramos?|mg|ml|mililitros?|l|litros?|oz|onzas?|lbs?|libras?|tazas?|cups?|cucharadas?|cucharaditas?|cdas?|cdtas?|tbsp|tbs|tsp|rebanadas?|rodajas?|latas?|dientes?|piezas?|unidades?|porciones?|pu[nñ]ados?|manojos?|ramas?|scoops?|sobres?)\b)?\s*(?:de\s+)?/i,
+      ''
+    )
+    .replace(/^(?:pizca|chorrito|al gusto|a gusto)(?:\s+de)?\s*/i, '')
+    .trim();
+  return stripped || original;
+}
+
 // Acepta strings ("200g arroz") o {name, measure}.
 function estimateMacros(ingredients) {
   const totals = { kcal: 0, p: 0, c: 0, f: 0 };
@@ -166,4 +181,4 @@ function estimateMacros(ingredients) {
   };
 }
 
-module.exports = { estimateMacros, matchIngredient };
+module.exports = { estimateMacros, matchIngredient, ingredientName };

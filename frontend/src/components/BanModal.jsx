@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { BTN, BTN_GHOST } from '../lib/ui';
+import { uniqueIngredientNames } from '../lib/ingredients';
 
 export default function BanModal({ meal, onClose, onDone, endpoint }) {
   const [selected, setSelected] = useState([]);
@@ -15,6 +16,8 @@ export default function BanModal({ meal, onClose, onDone, endpoint }) {
   }, [meal]);
 
   if (!meal) return null;
+
+  const options = uniqueIngredientNames(meal.ingredients);
 
   const toggle = (ingredient) => {
     setSelected((prev) =>
@@ -50,7 +53,7 @@ export default function BanModal({ meal, onClose, onDone, endpoint }) {
         </p>
 
         <div className="mt-4 flex flex-col gap-2">
-          {(meal.ingredients || []).map((ing) => (
+          {options.map((ing) => (
             <label
               key={ing}
               className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/85"

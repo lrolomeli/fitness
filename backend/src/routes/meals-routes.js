@@ -2,7 +2,7 @@ const { Router } = require('express');
 const meals = require('../db/repos/meals');
 const preferences = require('../db/repos/preferences');
 const recipes = require('../db/repos/recipes');
-const { estimateMacros } = require('../services/estimator');
+const { estimateMacros, ingredientName } = require('../services/estimator');
 const planner = require('../services/planner');
 const ai = require('../services/ai');
 const { buildContext } = require('../services/context');
@@ -145,23 +145,34 @@ router.post('/:id/ban', (req, res) => {
   if (!meal) return res.status(404).json({ error: 'Comida no encontrada' });
 
   const { items, whole } = req.body || {};
-  const values = whole ? [meal.title] : Array.isArray(items) ? items : [];
+  const raw = whole ? [meal.title] : Array.isArray(items) ? items : [];
+  // Guarda solo el ingrediente (sin cantidades) y evita repetidos en la petición.
+  const values = raw
+    .map((value) => (whole ? String(value).trim() : ingredientName(value)))
+    .filter(Boolean);
 
   if (!values.length) {
     return res.status(400).json({ error: 'Nada que vetar' });
   }
 
-  const added = values
-    .map((value) => String(value).trim())
-    .filter(Boolean)
-    .map((value) => {
-      try {
-        return preferences.add({ type: 'banned', value, notes: `Vetado desde "${meal.title}"` });
-      } catch {
-        return null;
-      }
-    })
-    .filter(Boolean);
+  const added = [
+    ...new Map(
+      values
+        .map((value) => {
+          try {
+            return preferences.add({
+              type: 'banned',
+              value,
+              notes: `Vetado desde "${meal.title}"`,
+            });
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean)
+        .map((pref) => [pref.id, pref])
+    ).values(),
+  ];
 
   res.status(201).json({ added });
 });

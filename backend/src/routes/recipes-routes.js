@@ -1,7 +1,7 @@
 const { Router } = require('express');
 const recipes = require('../db/repos/recipes');
 const preferences = require('../db/repos/preferences');
-const { estimateMacros } = require('../services/estimator');
+const { estimateMacros, ingredientName } = require('../services/estimator');
 const planner = require('../services/planner');
 const ai = require('../services/ai');
 const { allocateBatch } = require('../services/proposalBatch');
@@ -63,8 +63,10 @@ router.post('/', (req, res) => {
   res.status(201).json(created);
 });
 
-// Reponer el recetario con IA: genera al menos 10 propuestas y, si el déficit es
-// mayor, exactamente las necesarias (faltan 30 → 30). Reparto proporcional al déficit.
+// Reponer/ampliar el recetario con IA: genera al menos 10 propuestas y, si el
+// déficit es mayor, exactamente las necesarias. Reparto proporcional al déficit.
+// La meta (30) es un mínimo para variedad, no un máximo: si ya se alcanzó, se
+// generan 10 propuestas repartidas entre los momentos del día.
 router.post('/proposals', async (req, res) => {
   try {
     if (!ai.isConfigured()) {
@@ -72,12 +74,10 @@ router.post('/proposals', async (req, res) => {
     }
     const deficit = planner.poolDeficit();
     const total = Object.values(deficit).reduce((a, b) => a + b, 0);
-    if (!total) {
-      return res.json({ created: [], message: 'El recetario ya tiene sus 30 recetas activas' });
-    }
+    const weights = total ? deficit : planner.SLOT_TARGETS;
 
     const target = Math.max(10, total);
-    const batch = allocateBatch(deficit, planner.SLOT_ORDER, target);
+    const batch = allocateBatch(weights, planner.SLOT_ORDER, target);
     const wanted = Object.values(batch).reduce((a, b) => a + b, 0);
     if (!wanted) return res.json({ created: [] });
 
@@ -131,23 +131,34 @@ router.post('/:id/ban', (req, res) => {
   if (!recipe) return res.status(404).json({ error: 'Receta no encontrada' });
 
   const { items, whole } = req.body || {};
-  const values = whole ? [recipe.title] : Array.isArray(items) ? items : [];
+  const raw = whole ? [recipe.title] : Array.isArray(items) ? items : [];
+  // Guarda solo el ingrediente (sin cantidades) y evita repetidos en la petición.
+  const values = raw
+    .map((value) => (whole ? String(value).trim() : ingredientName(value)))
+    .filter(Boolean);
 
   if (!values.length) {
     return res.status(400).json({ error: 'Nada que vetar' });
   }
 
-  const added = values
-    .map((value) => String(value).trim())
-    .filter(Boolean)
-    .map((value) => {
-      try {
-        return preferences.add({ type: 'banned', value, notes: `Vetado desde "${recipe.title}"` });
-      } catch {
-        return null;
-      }
-    })
-    .filter(Boolean);
+  const added = [
+    ...new Map(
+      values
+        .map((value) => {
+          try {
+            return preferences.add({
+              type: 'banned',
+              value,
+              notes: `Vetado desde "${recipe.title}"`,
+            });
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean)
+        .map((pref) => [pref.id, pref])
+    ).values(),
+  ];
 
   recipes.remove(recipe.id);
   res.status(201).json({ added });

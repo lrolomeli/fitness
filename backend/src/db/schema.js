@@ -1,4 +1,5 @@
 const db = require('./init');
+const { ingredientName } = require('../services/estimator');
 
 const DB_NAME = 'fitness';
 
@@ -122,6 +123,37 @@ CREATE TABLE IF NOT EXISTS recipes (
 );
 `;
 
+function prefKey(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Saneado idempotente de vetos antiguos: deja solo el ingrediente (sin
+// cantidades) y elimina duplicados (conserva el más antiguo).
+function sanitizeBannedPreferences() {
+  const rows = db.queryAll(
+    DB_NAME,
+    "SELECT * FROM preferences WHERE type = 'banned' ORDER BY id ASC"
+  );
+  const seen = new Set();
+  for (const row of rows) {
+    const clean = ingredientName(row.value) || String(row.value || '').trim();
+    const key = prefKey(clean);
+    if (!key || seen.has(key)) {
+      db.run(DB_NAME, 'DELETE FROM preferences WHERE id = ?', [row.id]);
+      continue;
+    }
+    seen.add(key);
+    if (clean !== row.value) {
+      db.run(DB_NAME, 'UPDATE preferences SET value = ? WHERE id = ?', [clean, row.id]);
+    }
+  }
+}
+
 // Migraciones ligeras para bases de datos ya existentes (sql.js no altera
 // tablas con CREATE TABLE IF NOT EXISTS).
 function migrate() {
@@ -133,6 +165,7 @@ function migrate() {
     db.exec(DB_NAME, "UPDATE recipes SET status = 'active' WHERE source IN ('up', 'manual')");
     db.exec(DB_NAME, "UPDATE recipes SET status = 'proposed' WHERE source NOT IN ('up', 'manual')");
   }
+  sanitizeBannedPreferences();
 }
 
 async function init() {

@@ -119,35 +119,42 @@ export default function ExercisesSection({ state, onChanged }) {
       {missing > 0 && (
         <Banner variant="warn">
           Te faltan {missing} ejercicio{missing === 1 ? '' : 's'} activo{missing === 1 ? '' : 's'}{' '}
-          para llegar a {target}.
+          para la meta mínima de {target} (sirve solo para variar más).
         </Banner>
       )}
 
       <Card
-        title={`Catálogo de ejercicios · ${totalActive}/${target}`}
+        title={`Catálogo activo · ${totalActive} ejercicio${totalActive === 1 ? '' : 's'}`}
         action={
           <div className="flex gap-2">
             <button type="button" onClick={() => setShowForm(true)} disabled={busy} className={BTN_GHOST}>
               Agregar
             </button>
-            <button type="button" onClick={generate} disabled={busy || missing === 0} className={BTN}>
+            <button type="button" onClick={generate} disabled={busy} className={BTN}>
               {busy ? 'Generando…' : 'Propuestas IA'}
             </button>
           </div>
         }
       >
         <div className="flex flex-wrap gap-1.5">
-          {BLOCK_ORDER.map((block) => (
-            <span
-              key={block}
-              className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[0.7rem] text-white/60"
-            >
-              {BLOCK_LABELS[block]} {coverage[block] || 0}/{targets[block] || '?'}
-            </span>
-          ))}
+          {BLOCK_ORDER.map((block) => {
+            const have = coverage[block] || 0;
+            const goal = targets[block] || 0;
+            return (
+              <span
+                key={block}
+                className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[0.7rem] text-white/60"
+              >
+                {BLOCK_LABELS[block]} {have}
+                <span className="text-white/35"> · meta {goal || '?'}</span>
+                {goal > 0 && have >= goal ? ' ✓' : ''}
+              </span>
+            );
+          })}
         </div>
         <p className="mt-2 text-xs text-white/40">
-          La rutina se arma solo con estos ejercicios activos, según el split de tu fase.
+          La rutina se arma con estos ejercicios activos, según el split de tu fase. La meta es un
+          mínimo: puedes tener más.
         </p>
       </Card>
 

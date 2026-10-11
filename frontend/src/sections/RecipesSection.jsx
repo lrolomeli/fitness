@@ -145,12 +145,12 @@ export default function RecipesSection({ state, onChanged }) {
       {missing > 0 && (
         <Banner variant="warn">
           Te faltan {missing} receta{missing === 1 ? '' : 's'} activa{missing === 1 ? '' : 's'} para
-          llegar a {target}.
+          la meta mínima de {target} (sirve solo para variar más).
         </Banner>
       )}
 
       <Card
-        title={`Recetario curado · ${totalActive}/${target}`}
+        title={`Recetario activo · ${totalActive} receta${totalActive === 1 ? '' : 's'}`}
         action={
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => setShowForm(true)} disabled={busy} className={BTN_GHOST}>
@@ -159,24 +159,31 @@ export default function RecipesSection({ state, onChanged }) {
             <button type="button" onClick={dedupe} disabled={busy} className={BTN_GHOST}>
               Limpiar duplicados
             </button>
-            <button type="button" onClick={generate} disabled={busy || missing === 0} className={BTN}>
+            <button type="button" onClick={generate} disabled={busy} className={BTN}>
               {busy ? 'Generando…' : 'Propuestas IA'}
             </button>
           </div>
         }
       >
         <div className="flex flex-wrap gap-1.5">
-          {SLOT_ORDER.map((slot) => (
-            <span
-              key={slot}
-              className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[0.7rem] text-white/60"
-            >
-              {SLOT_LABELS[slot]} {coverage[slot] || 0}/{targets[slot] || '?'}
-            </span>
-          ))}
+          {SLOT_ORDER.map((slot) => {
+            const have = coverage[slot] || 0;
+            const goal = targets[slot] || 0;
+            return (
+              <span
+                key={slot}
+                className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[0.7rem] text-white/60"
+              >
+                {SLOT_LABELS[slot]} {have}
+                <span className="text-white/35"> · meta {goal || '?'}</span>
+                {goal > 0 && have >= goal ? ' ✓' : ''}
+              </span>
+            );
+          })}
         </div>
         <p className="mt-2 text-xs text-white/40">
-          La dieta semanal se arma solo con estas recetas activas.
+          La dieta semanal se arma con estas recetas activas. La meta es un mínimo: puedes tener
+          más.
         </p>
       </Card>
 

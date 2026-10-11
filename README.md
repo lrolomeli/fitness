@@ -1,8 +1,9 @@
 # Fitness
 
 Web app personal para **registrar dieta y entrenamiento**. La dieta se arma
-desde un **recetario curado de 30 recetas activas** y la rutina desde un
-**catálogo de 30 ejercicios activos** que tú apruebas y guardas; la IA solo
+desde un **recetario curado con una meta de ~30 recetas activas** (puedes tener
+más) y la rutina desde un **catálogo de ~30 ejercicios activos** que tú apruebas
+y guardas; la IA solo
 **propone** recetas/ejercicios nuevos cuando falta variedad y ayuda a **cambiar
 una comida o un ejercicio** concreto. Aprende de tus gustos: lo que no te gusta
 lo vetas y deja de proponerse.
@@ -59,7 +60,7 @@ frontend/  # Vite + React + Tailwind v4
 - `workouts` + `exercises` — rutina diaria, series, reps, peso y RIR.
 - `progress_logs` — peso, calorías reales y marcas del gimnasio.
 - `recipes` — **recetario curado**. Cada platillo tiene estado: `active` (cuenta
-  para las 30 y se usa en la dieta), `proposed` (propuesta manual o de IA, espera
+  para la meta de ~30 y se usa en la dieta), `proposed` (propuesta manual o de IA, espera
   aprobación y **persiste hasta que la borres**) o `disabled` (oculto porque te
   cansaste).
 - `exercise_library` — **catálogo de ejercicios** con el mismo esquema de estado
@@ -75,22 +76,23 @@ frontend/  # Vite + React + Tailwind v4
     días, RIR 2-3.
   - *Fase 2 (sem 5-8) — Intensificación:* +150-200 kcal extra en carbohidratos,
     más series o RIR 1-2; la app sugiere subir peso/reps.
-- **Recetario curado (30 activas):** la dieta se arma **solo** con recetas
-  `active`, repartidas por momento del día (7 desayunos / 8 comidas / 8 cenas / 7
-  snacks). La IA **no** genera la semana: el *planner* solo rota esas recetas y
-  escala porciones a los macros objetivo.
+- **Recetario curado (meta ~30, sin tope):** la dieta se arma **solo** con recetas
+  `active`, repartidas por momento del día (meta de 7 desayunos / 8 comidas / 8
+  cenas / 7 snacks; puedes tener más). La IA **no** genera la semana: el *planner*
+  solo rota esas recetas y escala porciones a los macros objetivo.
 - **Guardar con un clic:** 👍 o «Guardar» pasan la receta a `active`; «Guardar
   semana» activa todo el plan. El **formulario manual** y las **propuestas IA**
   entran como `proposed` y no cuentan hasta que las apruebes.
-- **Propuestas IA:** cuando faltan activas, «Propuestas IA» pide a Gemini (JSON
-  estricto, `responseJsonSchema`) hasta 10 recetas nuevas según el déficit por
-  slot, respetando vetados, restricciones y disgustos. Las propuestas **persisten
-  indefinidamente**; solo desaparecen si las borras explícitamente.
+- **Propuestas IA:** «Propuestas IA» pide a Gemini (JSON estricto,
+  `responseJsonSchema`) al menos 10 recetas nuevas, repartidas según el déficit por
+  slot o entre los slots si la meta ya está cubierta, respetando vetados,
+  restricciones y disgustos. Las propuestas **persisten indefinidamente**; solo
+  desaparecen si las borras explícitamente.
 - **Cambiar una comida:** `POST /api/meals/:id/swap` reemplaza una sola comida.
   Sin instrucción toma otra receta `active` del recetario (sin IA); con una
   instrucción («más ligero», «sin lácteos»…) la IA crea una nueva que se usa en
   el plan pero no se guarda hasta que la guardes. El feedback 👍/👎 se reinicia.
-- **Catálogo de ejercicios (30 activos):** misma idea para la rutina. El split se
+- **Catálogo de ejercicios (meta ~30, sin tope):** misma idea para la rutina. El split se
   elige automáticamente por fase/experiencia (full body → torso/pierna →
   push/pull/legs) y la semana se arma **solo** con ejercicios `active`, con
   series/reps/RIR según `progression`. Los bloques son empuje / tracción / pierna
