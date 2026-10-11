@@ -129,7 +129,7 @@ O manualmente:
 docker compose up -d --build
 ```
 
-Sirve la UI en `http://localhost:8085` y proxya `/api` al backend.
+Sirve la UI en `http://localhost:8086` y proxya `/api` al backend.
 
 ## Auth
 
