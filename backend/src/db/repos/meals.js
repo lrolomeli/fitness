@@ -39,6 +39,42 @@ function create(meal) {
   return get(lastRow('meals').id);
 }
 
+function update(id, changes = {}) {
+  const current = get(id);
+  if (!current) return null;
+
+  const num = (value, fallback) => {
+    if (value === undefined || value === null || value === '') return fallback;
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.round(n) : fallback;
+  };
+
+  const title = changes.title !== undefined ? String(changes.title).trim() : current.title;
+  if (!title) throw Object.assign(new Error('El título es obligatorio'), { status: 400 });
+
+  const ingredients = Array.isArray(changes.ingredients)
+    ? changes.ingredients.map((i) => String(i).trim()).filter(Boolean)
+    : current.ingredients;
+
+  db.run(
+    DB_NAME,
+    `UPDATE meals
+       SET title = ?, description = ?, ingredients = ?, kcal = ?, protein_g = ?, carbs_g = ?, fat_g = ?
+     WHERE id = ?`,
+    [
+      title,
+      changes.description !== undefined ? changes.description : current.description,
+      JSON.stringify(ingredients),
+      num(changes.kcal, current.kcal),
+      num(changes.protein_g, current.protein_g),
+      num(changes.carbs_g, current.carbs_g),
+      num(changes.fat_g, current.fat_g),
+      id,
+    ]
+  );
+  return get(id);
+}
+
 function setFeedback(id, feedback) {
   db.run(DB_NAME, 'UPDATE meals SET feedback = ? WHERE id = ?', [feedback, id]);
   return get(id);
@@ -62,4 +98,4 @@ function listAll() {
     .map(parse);
 }
 
-module.exports = { listByPlan, get, create, setFeedback, recentFeedback, listAll };
+module.exports = { listByPlan, get, create, update, setFeedback, recentFeedback, listAll };

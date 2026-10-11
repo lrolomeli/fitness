@@ -5,10 +5,22 @@ import Spinner from '../components/ui/Spinner';
 import Collapsible from '../components/ui/Collapsible';
 import BanModal from '../components/BanModal';
 import { api } from '../lib/api';
-import { BTN, BTN_GHOST, BTN_DANGER, DAY_NAMES, SLOT_LABELS, SLOT_ORDER } from '../lib/ui';
+import { BTN, BTN_GHOST, BTN_DANGER, INPUT, LABEL, DAY_NAMES, SLOT_LABELS, SLOT_ORDER } from '../lib/ui';
 
-function MealRow({ meal, onFeedback, onBan, onSave }) {
+const emptyForm = (meal) => ({
+  title: meal.title || '',
+  ingredients: (meal.ingredients || []).join('\n'),
+  kcal: meal.kcal ?? 0,
+  protein_g: meal.protein_g ?? 0,
+  carbs_g: meal.carbs_g ?? 0,
+  fat_g: meal.fat_g ?? 0,
+});
+
+function MealRow({ meal, onFeedback, onBan, onSave, onUpdate }) {
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState(() => emptyForm(meal));
+  const [error, setError] = useState('');
 
   const vote = async (rating) => {
     if (busy) return;
@@ -24,7 +36,98 @@ function MealRow({ meal, onFeedback, onBan, onSave }) {
     setBusy(false);
   };
 
+  const startEdit = () => {
+    setForm(emptyForm(meal));
+    setError('');
+    setEditing(true);
+  };
+
+  const submitEdit = async () => {
+    if (busy) return;
+    if (!form.title.trim()) {
+      setError('El título es obligatorio');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      await onUpdate(meal, {
+        ...form,
+        ingredients: form.ingredients
+          .split('\n')
+          .map((s) => s.trim())
+          .filter(Boolean),
+      });
+      setEditing(false);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const feedback = meal.feedback;
+
+  if (editing) {
+    return (
+      <li className="rounded-xl border border-accent/30 bg-white/5 px-3.5 py-3">
+        <div className="flex flex-col gap-3">
+          <label className={LABEL}>
+            Título
+            <input
+              className={INPUT}
+              value={form.title}
+              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+              disabled={busy}
+            />
+          </label>
+          <label className={LABEL}>
+            Ingredientes (uno por línea)
+            <textarea
+              className={`${INPUT} min-h-[90px] resize-y`}
+              value={form.ingredients}
+              onChange={(e) => setForm((f) => ({ ...f, ingredients: e.target.value }))}
+              disabled={busy}
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              ['kcal', 'Kcal'],
+              ['protein_g', 'Proteína (g)'],
+              ['carbs_g', 'Carbos (g)'],
+              ['fat_g', 'Grasa (g)'],
+            ].map(([key, label]) => (
+              <label key={key} className={LABEL}>
+                {label}
+                <input
+                  type="number"
+                  min="0"
+                  className={INPUT}
+                  value={form[key]}
+                  onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                  disabled={busy}
+                />
+              </label>
+            ))}
+          </div>
+          {error && <p className="text-sm text-danger">{error}</p>}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setEditing(false)}
+              disabled={busy}
+              className={BTN_GHOST}
+            >
+              Cancelar
+            </button>
+            <button type="button" onClick={submitEdit} disabled={busy} className={BTN}>
+              {busy ? 'Guardando…' : 'Guardar'}
+            </button>
+          </div>
+        </div>
+      </li>
+    );
+  }
 
   return (
     <li className="rounded-xl border border-white/10 bg-white/5 px-3.5 py-3">
@@ -41,6 +144,9 @@ function MealRow({ meal, onFeedback, onBan, onSave }) {
             <p className="mt-1 text-xs text-white/40">{meal.ingredients.join(', ')}</p>
           )}
           <div className="mt-2 flex flex-wrap gap-2">
+            <button type="button" onClick={startEdit} disabled={busy} className={BTN_GHOST}>
+              Editar
+            </button>
             <button type="button" onClick={save} disabled={busy} className={BTN_GHOST}>
               Guardar receta
             </button>
@@ -160,6 +266,14 @@ export default function MealsSection({ state, onChanged }) {
     }
   };
 
+  const updateMeal = async (meal, patch) => {
+    const updated = await api.put(`/api/meals/${meal.id}`, patch);
+    setPlan((prev) => ({
+      ...prev,
+      meals: prev.meals.map((m) => (m.id === updated.id ? updated : m)),
+    }));
+  };
+
   const saveRecipe = async (meal) => {
     setNotice('');
     try {
@@ -241,6 +355,7 @@ export default function MealsSection({ state, onChanged }) {
                     onFeedback={onFeedback}
                     onBan={setBanMeal}
                     onSave={saveRecipe}
+                    onUpdate={updateMeal}
                   />
                 ))}
               </ul>

@@ -2,8 +2,33 @@ const { Router } = require('express');
 const meals = require('../db/repos/meals');
 const preferences = require('../db/repos/preferences');
 const recipes = require('../db/repos/recipes');
+const { estimateMacros } = require('../services/estimator');
 
 const router = Router();
+
+// Editar una comida del plan (título, ingredientes y macros).
+router.put('/:id', (req, res) => {
+  const body = req.body || {};
+
+  let ingredients = body.ingredients;
+  if (typeof ingredients === 'string') {
+    ingredients = ingredients
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  const patch = { ...body, ingredients };
+  const noMacros =
+    !Number(body.kcal) && !Number(body.protein_g) && !Number(body.carbs_g) && !Number(body.fat_g);
+  if (Array.isArray(ingredients) && ingredients.length && noMacros) {
+    Object.assign(patch, estimateMacros(ingredients));
+  }
+
+  const updated = meals.update(Number(req.params.id), patch);
+  if (!updated) return res.status(404).json({ error: 'Comida no encontrada' });
+  res.json(updated);
+});
 
 router.put('/:id/feedback', (req, res) => {
   const rating = req.body?.rating;
