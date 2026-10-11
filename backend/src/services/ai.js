@@ -1,7 +1,22 @@
 const { GoogleGenAI } = require('@google/genai');
 const planner = require('./planner');
 
-const MODEL = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite';
+const DEFAULT_MODEL = 'gemini-3.1-flash-lite';
+// Modelos que ya no están disponibles para proyectos nuevos: si un .env antiguo
+// los deja configurados, caemos al default en lugar de fallar con 404.
+const UNAVAILABLE_MODELS = new Set(['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro']);
+
+function resolveModel() {
+  const configured = (process.env.GEMINI_MODEL || '').trim();
+  if (!configured) return DEFAULT_MODEL;
+  if (UNAVAILABLE_MODELS.has(configured)) {
+    console.warn(`[ai] GEMINI_MODEL="${configured}" ya no está disponible; usando "${DEFAULT_MODEL}".`);
+    return DEFAULT_MODEL;
+  }
+  return configured;
+}
+
+const MODEL = resolveModel();
 
 let client = null;
 
