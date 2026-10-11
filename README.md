@@ -73,15 +73,18 @@ frontend/  # Vite + React + Tailwind v4
   recetario se le inyecta para reutilizarlas.
 - **Feedback loop:** al marcar 👎 eliges manualmente qué vetar (ingredientes y/o
   el plato completo); se guarda en `preferences` y no se vuelve a proponer.
-- **Proveedor de recetas (opcional):** `RECIPE_PROVIDER=themealdb` trae recetas
-  reales (gratis) y estima sus macros con `estimator.js`; si falla la red, cae
-  al recetario local.
+- **Proveedor de recetas (TheMealDB, activo por defecto):** `RECIPE_PROVIDER=themealdb`
+  trae recetas reales con el test key `1` (endpoints **V1**, gratis para dev/uso
+  personal) y estima sus macros con `estimator.js`; si falla la red, cae al
+  recetario local. Para una app pública, TheMealDB pide una key de supporter.
+  Se desactiva con `RECIPE_PROVIDER=none`.
 
 ## Macros estimados
 
 TheMealDB (y las recetas manuales sin macros) se calculan con una tabla local de
 ~70 ingredientes comunes y un parser de cantidades (`estimator.js`). Es
-**aproximado**: sirve para armar el plan y luego puedes ajustar porciones.
+**aproximado**: sirve para armar el plan y luego puedes ajustar porciones. Las
+recetas de TheMealDB llegan en inglés.
 
 ## Desarrollo
 
@@ -108,9 +111,9 @@ ADMIN_PASSWORD=change_me
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-2.5-flash
 
-# Fuente externa de recetas (opcional): none | themealdb
-RECIPE_PROVIDER=none
-# Key de TheMealDB (la de prueba es "1").
+# Fuente externa de recetas: themealdb | none
+RECIPE_PROVIDER=themealdb
+# Key de TheMealDB (la de prueba es "1"; usa tu key de supporter si la tienes).
 RECIPE_API_KEY=
 ```
 
