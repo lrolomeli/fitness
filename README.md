@@ -109,7 +109,7 @@ COOKIE_SECURE=false
 ADMIN_USER=admin
 ADMIN_PASSWORD=change_me
 GEMINI_API_KEY=
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.1-flash-lite
 
 # Fuente externa de recetas: themealdb | none
 RECIPE_PROVIDER=themealdb
