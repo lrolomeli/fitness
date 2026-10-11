@@ -1,10 +1,10 @@
 require('dotenv').config();
 
 const app = require('./app');
-const store = require('./db/store');
+const schema = require('./db/schema');
 
 async function start() {
-  await store.init();
+  await schema.init();
 
   const PORT = Number(process.env.PORT) || 3000;
   const server = app.listen(PORT, () => {

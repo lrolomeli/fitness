@@ -103,10 +103,10 @@ export default function LoginView() {
 
         <h1 className="text-center text-2xl font-light text-white">
           <span className="bg-gradient-to-r from-accent-soft to-hum bg-clip-text font-semibold text-transparent">
-            App
+            Fitness
           </span>
         </h1>
-        <p className="mb-6 mt-1 text-center text-sm text-white/55">Inicia sesión para continuar</p>
+        <p className="mb-6 mt-1 text-center text-sm text-white/55">Dieta y entrenamiento</p>
 
         {error && <Banner variant="err" className="mb-4">{error}</Banner>}
 
