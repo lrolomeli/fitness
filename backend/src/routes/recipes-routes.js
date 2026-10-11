@@ -89,10 +89,14 @@ router.post('/proposals', async (req, res) => {
     });
 
     const created = [];
+    const seen = new Set(existingTitles.map((t) => recipes.titleKey(t)));
     for (const recipe of generated) {
       if (!planner.SLOT_ORDER.includes(recipe.slot)) continue;
       const ingredients = parseIngredients(recipe.ingredients);
       if (!recipe.title || !ingredients.length) continue;
+      const key = recipes.titleKey(recipe.title);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
       const saved = recipes.upsertRecipe({
         title: recipe.title,
         slot: recipe.slot,
@@ -111,6 +115,13 @@ router.post('/proposals', async (req, res) => {
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
   }
+});
+
+// Limpia recetas repetidas del recetario (mismo título normalizado, sin importar
+// el slot). Conserva una por grupo y elimina el resto.
+router.post('/dedupe', (req, res) => {
+  const removed = recipes.dedupe();
+  res.json({ removed });
 });
 
 // Vetar un platillo o sus ingredientes desde una propuesta: se guarda en

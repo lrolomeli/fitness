@@ -77,6 +77,28 @@ export default function RecipesSection({ state, onChanged }) {
     }
   };
 
+  const dedupe = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const res = await api.post('/api/recipes/dedupe', {});
+      await refresh();
+      setNotice(
+        res.removed
+          ? `Se eliminaron ${res.removed} receta${res.removed === 1 ? '' : 's'} repetida${
+              res.removed === 1 ? '' : 's'
+            }`
+          : 'No había recetas repetidas'
+      );
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const setStatus = async (recipe, status) => {
     setError('');
     setNotice('');
@@ -130,9 +152,12 @@ export default function RecipesSection({ state, onChanged }) {
       <Card
         title={`Recetario curado · ${totalActive}/${target}`}
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => setShowForm(true)} disabled={busy} className={BTN_GHOST}>
               Agregar
+            </button>
+            <button type="button" onClick={dedupe} disabled={busy} className={BTN_GHOST}>
+              Limpiar duplicados
             </button>
             <button type="button" onClick={generate} disabled={busy || missing === 0} className={BTN}>
               {busy ? 'Generando…' : 'Propuestas IA'}
