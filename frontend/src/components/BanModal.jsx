@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { BTN, BTN_GHOST } from '../lib/ui';
 
-export default function BanModal({ meal, onClose, onDone }) {
+export default function BanModal({ meal, onClose, onDone, endpoint }) {
   const [selected, setSelected] = useState([]);
   const [whole, setWhole] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -31,7 +31,7 @@ export default function BanModal({ meal, onClose, onDone }) {
     setBusy(true);
     setError('');
     try {
-      await api.post(`/api/meals/${meal.id}/ban`, { whole, items: selected });
+      await api.post(endpoint || `/api/meals/${meal.id}/ban`, { whole, items: selected });
       await onDone?.();
       onClose?.();
     } catch (err) {

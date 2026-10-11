@@ -4,6 +4,7 @@ import Banner from '../components/ui/Banner';
 import Spinner from '../components/ui/Spinner';
 import Collapsible from '../components/ui/Collapsible';
 import RecipeForm from '../components/RecipeForm';
+import BanModal from '../components/BanModal';
 import { api } from '../lib/api';
 import { BTN, BTN_GHOST, BTN_DANGER, SLOT_LABELS, SLOT_ORDER } from '../lib/ui';
 
@@ -32,6 +33,7 @@ export default function RecipesSection({ state, onChanged }) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [banRecipe, setBanRecipe] = useState(null);
 
   const load = async () => setData(await api.get('/api/recipes'));
 
@@ -202,6 +204,9 @@ export default function RecipesSection({ state, onChanged }) {
                     <button type="button" onClick={() => setStatus(r, 'active')} className={BTN_GHOST}>
                       Aprobar
                     </button>
+                    <button type="button" onClick={() => setBanRecipe(r)} className={BTN_DANGER}>
+                      No me gusta
+                    </button>
                     <button type="button" onClick={() => remove(r)} className={BTN_DANGER}>
                       Eliminar
                     </button>
@@ -245,6 +250,16 @@ export default function RecipesSection({ state, onChanged }) {
           }}
         />
       )}
+
+      <BanModal
+        meal={banRecipe}
+        endpoint={banRecipe ? `/api/recipes/${banRecipe.id}/ban` : undefined}
+        onClose={() => setBanRecipe(null)}
+        onDone={() => {
+          setNotice('Vetado: no se volverá a proponer');
+          refresh();
+        }}
+      />
     </div>
   );
 }

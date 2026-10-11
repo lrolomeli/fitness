@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const recipes = require('../db/repos/recipes');
+const preferences = require('../db/repos/preferences');
 const { estimateMacros } = require('../services/estimator');
 const planner = require('../services/planner');
 const ai = require('../services/ai');
@@ -110,6 +111,35 @@ router.post('/proposals', async (req, res) => {
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
   }
+});
+
+// Vetar un platillo o sus ingredientes desde una propuesta: se guarda en
+// preferences (para no volver a proponerlo) y la propuesta se elimina.
+router.post('/:id/ban', (req, res) => {
+  const recipe = recipes.get(Number(req.params.id));
+  if (!recipe) return res.status(404).json({ error: 'Receta no encontrada' });
+
+  const { items, whole } = req.body || {};
+  const values = whole ? [recipe.title] : Array.isArray(items) ? items : [];
+
+  if (!values.length) {
+    return res.status(400).json({ error: 'Nada que vetar' });
+  }
+
+  const added = values
+    .map((value) => String(value).trim())
+    .filter(Boolean)
+    .map((value) => {
+      try {
+        return preferences.add({ type: 'banned', value, notes: `Vetado desde "${recipe.title}"` });
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+
+  recipes.remove(recipe.id);
+  res.status(201).json({ added });
 });
 
 router.patch('/:id/status', (req, res) => {
