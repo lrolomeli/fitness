@@ -61,7 +61,7 @@ export default function Dashboard() {
       </header>
 
       <main className="mx-auto flex max-w-[46rem] flex-col gap-3.5 px-4 py-4 pb-28">
-        <Tabs tabs={TABS} value={active} onChange={setActive} className="overflow-x-auto" />
+        <Tabs tabs={TABS} value={active} onChange={setActive} />
 
         {active === 'perfil' && <ProfileSection state={state} onSaved={refresh} />}
         {active === 'comidas' && <MealsSection state={state} onChanged={refresh} />}
