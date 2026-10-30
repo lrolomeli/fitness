@@ -87,10 +87,66 @@ CREATE TABLE IF NOT EXISTS exercise_library (
   name TEXT NOT NULL,
   block TEXT NOT NULL DEFAULT 'empuje',
   equipment TEXT,
+  sets INTEGER,
+  reps TEXT,
+  duration_seconds INTEGER,
+  notes TEXT,
+  media TEXT NOT NULL DEFAULT '[]',
   status TEXT NOT NULL DEFAULT 'active',
   source TEXT NOT NULL DEFAULT 'seed',
   times_used INTEGER NOT NULL DEFAULT 0,
   last_used_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS routines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  description TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS routine_exercises (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  routine_id INTEGER NOT NULL,
+  exercise_id INTEGER,
+  name TEXT NOT NULL,
+  block TEXT,
+  sets INTEGER,
+  reps TEXT,
+  duration_seconds INTEGER,
+  notes TEXT,
+  order_index INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS training_weeks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  is_active INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS training_week_days (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  week_id INTEGER NOT NULL,
+  day INTEGER NOT NULL,
+  routine_id INTEGER,
+  is_rest INTEGER NOT NULL DEFAULT 0,
+  UNIQUE (week_id, day)
+);
+
+CREATE TABLE IF NOT EXISTS exercise_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  exercise_id INTEGER,
+  exercise_name TEXT NOT NULL,
+  date TEXT NOT NULL,
+  weight_kg REAL,
+  reps INTEGER,
+  sets INTEGER,
+  notes TEXT,
   created_at TEXT NOT NULL
 );
 
@@ -156,6 +212,13 @@ function sanitizeBannedPreferences() {
 
 // Migraciones ligeras para bases de datos ya existentes (sql.js no altera
 // tablas con CREATE TABLE IF NOT EXISTS).
+function addColumnIfMissing(table, column, definition) {
+  const columns = db.queryAll(DB_NAME, `PRAGMA table_info(${table})`).map((c) => c.name);
+  if (!columns.includes(column)) {
+    db.exec(DB_NAME, `ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
 function migrate() {
   const columns = db.queryAll(DB_NAME, 'PRAGMA table_info(recipes)').map((c) => c.name);
   if (!columns.includes('status')) {
@@ -165,6 +228,14 @@ function migrate() {
     db.exec(DB_NAME, "UPDATE recipes SET status = 'active' WHERE source IN ('up', 'manual')");
     db.exec(DB_NAME, "UPDATE recipes SET status = 'proposed' WHERE source NOT IN ('up', 'manual')");
   }
+
+  addColumnIfMissing('exercise_library', 'sets', 'INTEGER');
+  addColumnIfMissing('exercise_library', 'reps', 'TEXT');
+  addColumnIfMissing('exercise_library', 'duration_seconds', 'INTEGER');
+  addColumnIfMissing('exercise_library', 'notes', 'TEXT');
+  addColumnIfMissing('exercise_library', 'media', "TEXT NOT NULL DEFAULT '[]'");
+  addColumnIfMissing('exercise_library', 'updated_at', 'TEXT');
+
   sanitizeBannedPreferences();
 }
 

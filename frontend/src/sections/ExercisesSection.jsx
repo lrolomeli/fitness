@@ -4,10 +4,20 @@ import Banner from '../components/ui/Banner';
 import Spinner from '../components/ui/Spinner';
 import Collapsible from '../components/ui/Collapsible';
 import ExerciseForm from '../components/ExerciseForm';
+import ExerciseRecordModal from '../components/ExerciseRecordModal';
 import { api } from '../lib/api';
-import { BTN, BTN_GHOST, BTN_DANGER, BLOCK_LABELS, BLOCK_ORDER } from '../lib/ui';
+import {
+  BTN,
+  BTN_GHOST,
+  BTN_DANGER,
+  BLOCK_LABELS,
+  BLOCK_ORDER,
+  MEDIA_LABELS,
+  formatPrescription,
+} from '../lib/ui';
 
 function ExerciseRow({ exercise, actions }) {
+  const prescription = formatPrescription(exercise);
   return (
     <li className="flex items-start justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5">
       <div className="min-w-0">
@@ -17,6 +27,23 @@ function ExerciseRow({ exercise, actions }) {
           {exercise.equipment ? ` · ${exercise.equipment}` : ''}
           {exercise.source ? ` · ${exercise.source}` : ''}
         </p>
+        {prescription && <p className="text-xs text-white/55">{prescription}</p>}
+        {exercise.notes && <p className="text-xs text-white/40">{exercise.notes}</p>}
+        {exercise.media?.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {exercise.media.map((item, index) => (
+              <a
+                key={`${item.url}-${index}`}
+                href={item.url}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-full border border-accent/30 bg-accent/15 px-2 py-0.5 text-[0.65rem] text-white/80 hover:bg-accent/25"
+              >
+                {MEDIA_LABELS[item.type] || 'Enlace'}
+              </a>
+            ))}
+          </div>
+        )}
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1.5">{actions}</div>
     </li>
@@ -29,7 +56,9 @@ export default function ExercisesSection({ state, onChanged }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [showForm, setShowForm] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [recordTarget, setRecordTarget] = useState(null);
 
   const load = async () => setData(await api.get('/api/exercises'));
 
@@ -96,6 +125,47 @@ export default function ExercisesSection({ state, onChanged }) {
     }
   };
 
+  const openCreate = () => {
+    setEditing(null);
+    setFormOpen(true);
+  };
+
+  const openEdit = (exercise) => {
+    setEditing(exercise);
+    setFormOpen(true);
+  };
+
+  const renderActions = (exercise, mode) => (
+    <>
+      {mode === 'active' && (
+        <button type="button" onClick={() => setRecordTarget(exercise)} className={BTN_GHOST}>
+          Peso / récord
+        </button>
+      )}
+      <button type="button" onClick={() => openEdit(exercise)} className={BTN_GHOST}>
+        Editar
+      </button>
+      {mode === 'active' && (
+        <button type="button" onClick={() => setStatus(exercise, 'disabled')} className={BTN_GHOST}>
+          Deshabilitar
+        </button>
+      )}
+      {mode === 'proposed' && (
+        <button type="button" onClick={() => setStatus(exercise, 'active')} className={BTN_GHOST}>
+          Aprobar
+        </button>
+      )}
+      {mode === 'disabled' && (
+        <button type="button" onClick={() => setStatus(exercise, 'active')} className={BTN_GHOST}>
+          Reactivar
+        </button>
+      )}
+      <button type="button" onClick={() => remove(exercise)} className={BTN_DANGER}>
+        Eliminar
+      </button>
+    </>
+  );
+
   if (loading) return <Spinner />;
 
   const coverage = data?.coverage || {};
@@ -127,7 +197,7 @@ export default function ExercisesSection({ state, onChanged }) {
         title={`Catálogo activo · ${totalActive} ejercicio${totalActive === 1 ? '' : 's'}`}
         action={
           <div className="flex gap-2">
-            <button type="button" onClick={() => setShowForm(true)} disabled={busy} className={BTN_GHOST}>
+            <button type="button" onClick={openCreate} disabled={busy} className={BTN_GHOST}>
               Agregar
             </button>
             <button type="button" onClick={generate} disabled={busy} className={BTN}>
@@ -153,8 +223,8 @@ export default function ExercisesSection({ state, onChanged }) {
           })}
         </div>
         <p className="mt-2 text-xs text-white/40">
-          La rutina se arma con estos ejercicios activos, según el split de tu fase. La meta es un
-          mínimo: puedes tener más.
+          Aquí guardas nombre, grupo muscular, series, repeticiones o tiempo y enlaces. Luego creas
+          rutinas eligiendo de este catálogo.
         </p>
       </Card>
 
@@ -165,24 +235,7 @@ export default function ExercisesSection({ state, onChanged }) {
           <Card key={block} title={BLOCK_LABELS[block]}>
             <ul className="flex flex-col gap-2">
               {blockExercises.map((ex) => (
-                <ExerciseRow
-                  key={ex.id}
-                  exercise={ex}
-                  actions={
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setStatus(ex, 'disabled')}
-                        className={BTN_GHOST}
-                      >
-                        Deshabilitar
-                      </button>
-                      <button type="button" onClick={() => remove(ex)} className={BTN_DANGER}>
-                        Eliminar
-                      </button>
-                    </>
-                  }
-                />
+                <ExerciseRow key={ex.id} exercise={ex} actions={renderActions(ex, 'active')} />
               ))}
             </ul>
           </Card>
@@ -199,20 +252,7 @@ export default function ExercisesSection({ state, onChanged }) {
         ) : (
           <ul className="flex flex-col gap-2">
             {proposed.map((ex) => (
-              <ExerciseRow
-                key={ex.id}
-                exercise={ex}
-                actions={
-                  <>
-                    <button type="button" onClick={() => setStatus(ex, 'active')} className={BTN_GHOST}>
-                      Aprobar
-                    </button>
-                    <button type="button" onClick={() => remove(ex)} className={BTN_DANGER}>
-                      Eliminar
-                    </button>
-                  </>
-                }
-              />
+              <ExerciseRow key={ex.id} exercise={ex} actions={renderActions(ex, 'proposed')} />
             ))}
           </ul>
         )}
@@ -222,32 +262,28 @@ export default function ExercisesSection({ state, onChanged }) {
         <Collapsible title="Deshabilitados" subtitle={`${disabled.length} ocultos`}>
           <ul className="flex flex-col gap-2">
             {disabled.map((ex) => (
-              <ExerciseRow
-                key={ex.id}
-                exercise={ex}
-                actions={
-                  <>
-                    <button type="button" onClick={() => setStatus(ex, 'active')} className={BTN_GHOST}>
-                      Reactivar
-                    </button>
-                    <button type="button" onClick={() => remove(ex)} className={BTN_DANGER}>
-                      Eliminar
-                    </button>
-                  </>
-                }
-              />
+              <ExerciseRow key={ex.id} exercise={ex} actions={renderActions(ex, 'disabled')} />
             ))}
           </ul>
         </Collapsible>
       )}
 
-      {showForm && (
+      {formOpen && (
         <ExerciseForm
-          onClose={() => setShowForm(false)}
+          exercise={editing}
+          onClose={() => setFormOpen(false)}
           onSaved={() => {
-            setNotice('Ejercicio agregado como propuesta');
+            setNotice(editing ? 'Ejercicio actualizado' : 'Ejercicio agregado al catálogo');
             refresh();
           }}
+        />
+      )}
+
+      {recordTarget && (
+        <ExerciseRecordModal
+          exercise={recordTarget}
+          onClose={() => setRecordTarget(null)}
+          onSaved={() => refresh()}
         />
       )}
     </div>

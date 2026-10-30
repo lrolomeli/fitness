@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const exerciseLibrary = require('../db/repos/exerciseLibrary');
+const exerciseRecords = require('../db/repos/exerciseRecords');
 const workoutPlanner = require('../services/workoutPlanner');
 const ai = require('../services/ai');
 const { allocateBatch } = require('../services/proposalBatch');
@@ -20,6 +21,20 @@ router.get('/', (req, res) => {
   });
 });
 
+function exercisePayload(body = {}) {
+  return {
+    name: body.name,
+    block: body.block,
+    equipment: body.equipment,
+    sets: body.sets,
+    reps: body.reps,
+    duration_seconds: body.duration_seconds,
+    notes: body.notes,
+    media: body.media,
+    status: body.status,
+  };
+}
+
 // Alta manual: por defecto entra como propuesta.
 router.post('/', (req, res) => {
   const body = req.body || {};
@@ -30,9 +45,8 @@ router.post('/', (req, res) => {
   }
 
   const created = exerciseLibrary.upsertExercise({
+    ...exercisePayload(body),
     name,
-    block: body.block,
-    equipment: body.equipment ? String(body.equipment).trim() : null,
     source: 'manual',
     status: body.status || 'proposed',
   });
@@ -41,7 +55,7 @@ router.post('/', (req, res) => {
 
 // Reponer/ampliar el catálogo con IA: genera al menos 10 propuestas y, si el
 // déficit es mayor, exactamente las necesarias. Reparto proporcional al déficit.
-// La meta (30) es un mínimo para variedad, no un máximo: si ya se alcanzó, se
+// La meta (30) es un mínimo para variar más, no un máximo: si ya se alcanzó, se
 // generan 10 propuestas repartidas entre los bloques.
 router.post('/proposals', async (req, res) => {
   try {
@@ -84,6 +98,47 @@ router.post('/proposals', async (req, res) => {
   }
 });
 
+router.get('/:id/records', (req, res) => {
+  const id = Number(req.params.id);
+  const exercise = exerciseLibrary.get(id);
+  if (!exercise) return res.status(404).json({ error: 'Ejercicio no encontrado' });
+  res.json({
+    exercise,
+    records: exerciseRecords.listByExercise(id),
+    best: exerciseRecords.bestFor(id),
+  });
+});
+
+router.post('/:id/records', (req, res) => {
+  const id = Number(req.params.id);
+  const exercise = exerciseLibrary.get(id);
+  if (!exercise) return res.status(404).json({ error: 'Ejercicio no encontrado' });
+
+  try {
+    const result = exerciseRecords.add({
+      exercise_id: id,
+      exercise_name: exercise.name,
+      date: req.body?.date,
+      weight_kg: req.body?.weight_kg,
+      reps: req.body?.reps,
+      sets: req.body?.sets,
+      notes: req.body?.notes,
+    });
+    res.status(201).json(result);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+router.delete('/:id/records/:recordId', (req, res) => {
+  const record = exerciseRecords.get(Number(req.params.recordId));
+  if (!record || Number(record.exercise_id) !== Number(req.params.id)) {
+    return res.status(404).json({ error: 'Registro no encontrado' });
+  }
+  exerciseRecords.remove(record.id);
+  res.json({ success: true });
+});
+
 router.patch('/:id/status', (req, res) => {
   const status = req.body?.status;
   if (!exerciseLibrary.STATUSES.includes(status)) {
@@ -92,6 +147,20 @@ router.patch('/:id/status', (req, res) => {
   const updated = exerciseLibrary.setStatus(Number(req.params.id), status);
   if (!updated) return res.status(404).json({ error: 'Ejercicio no encontrado' });
   res.json(updated);
+});
+
+router.patch('/:id', (req, res) => {
+  const body = req.body || {};
+  if (body.block !== undefined && !exerciseLibrary.BLOCKS.includes(body.block)) {
+    return res.status(400).json({ error: 'block debe ser empuje, traccion, pierna o core' });
+  }
+  try {
+    const updated = exerciseLibrary.update(Number(req.params.id), exercisePayload(body));
+    if (!updated) return res.status(404).json({ error: 'Ejercicio no encontrado' });
+    res.json(updated);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
 });
 
 router.delete('/:id', (req, res) => {

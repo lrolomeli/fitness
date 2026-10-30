@@ -31,3 +31,23 @@ export const BLOCK_LABELS = {
 };
 
 export const BLOCK_ORDER = ['empuje', 'traccion', 'pierna', 'core'];
+
+export function formatDuration(seconds) {
+  const total = Number(seconds);
+  if (!Number.isFinite(total) || total <= 0) return '';
+  const mins = Math.floor(total / 60);
+  const secs = total % 60;
+  if (!mins) return `${secs} s`;
+  return secs ? `${mins} min ${secs} s` : `${mins} min`;
+}
+
+export function formatPrescription(exercise = {}) {
+  const parts = [];
+  if (exercise.sets) parts.push(`${exercise.sets} series`);
+  if (exercise.reps) parts.push(`${exercise.reps} reps`);
+  const duration = formatDuration(exercise.duration_seconds);
+  if (duration) parts.push(duration);
+  return parts.join(' · ');
+}
+
+export const MEDIA_LABELS = { link: 'Enlace', image: 'Imagen', video: 'Video' };

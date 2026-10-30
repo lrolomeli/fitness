@@ -14,6 +14,8 @@ const workoutsRoutes = require('./routes/workouts-routes');
 const progressRoutes = require('./routes/progress-routes');
 const recipesRoutes = require('./routes/recipes-routes');
 const exercisesRoutes = require('./routes/exercises-routes');
+const routinesRoutes = require('./routes/routines-routes');
+const trainingWeeksRoutes = require('./routes/training-weeks-routes');
 const stateRoutes = require('./routes/state-routes');
 
 const app = express();
@@ -68,6 +70,8 @@ app.use('/api/plans', plansRoutes);
 app.use('/api/meals', mealsRoutes);
 app.use('/api/recipes', recipesRoutes);
 app.use('/api/exercises', exercisesRoutes);
+app.use('/api/routines', routinesRoutes);
+app.use('/api/training-weeks', trainingWeeksRoutes);
 app.use('/api/workouts', workoutsRoutes);
 app.use('/api/progress', progressRoutes);
 

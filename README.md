@@ -27,16 +27,18 @@ backend/   # Express + sql.js
     index.js                # arranque
     db/init.js              # wrapper de sql.js (query/run/exec)
     db/schema.js            # definición de tablas
-    db/repos/               # users, preferences, mealPlans, meals, workouts, exerciseLibrary, progress, recipes
+    db/repos/               # users, preferences, mealPlans, meals, workouts, exerciseLibrary,
+                            # routines, trainingWeeks, exerciseRecords, progress, recipes
     services/nutrition.js   # BMR/TDEE + superávit + macros
     services/progression.js # mesociclos de 4 semanas (fases 1 y 2)
     services/estimator.js   # estimación de macros por ingrediente
     services/planner.js     # arma la semana desde el recetario curado (sin IA)
-    services/workoutPlanner.js # arma la rutina desde el catálogo de ejercicios (sin IA)
+    services/workoutPlanner.js # arma una rutina automática desde el catálogo (opcional)
     services/recipes/       # proveedor externo (TheMealDB)
     services/ai.js          # Gemini (propuestas de recetas/ejercicios y swaps; JSON estricto)
     services/context.js     # arma el contexto enriquecido para la IA
-    routes/                 # profile, preferences, plans, meals, recipes, exercises, workouts, progress, state
+    routes/                 # profile, preferences, plans, meals, recipes, exercises, routines,
+                            # training-weeks, workouts, progress, state
   data/                     # persistencia runtime (fitness.db)
 frontend/  # Vite + React + Tailwind v4
   src/
@@ -45,8 +47,12 @@ frontend/  # Vite + React + Tailwind v4
     components/BanModal.jsx # elegir qué vetar tras un thumbs down
     components/SwapModal.jsx # cambiar una sola comida (local o con IA)
     components/RecipeForm.jsx # alta manual de recetas (entra como propuesta)
-    components/ExerciseForm.jsx # alta manual de ejercicios (entra como propuesta)
-    components/ExerciseSwapModal.jsx # cambiar un ejercicio (local o con IA)
+    components/ExerciseForm.jsx # alta/edición manual de ejercicios (series, reps, tiempo, media)
+    components/ExerciseRecordModal.jsx # registrar pesos, récords e historial por ejercicio
+    components/RoutineForm.jsx # crear/editar rutinas eligiendo ejercicios del catálogo
+    components/WeekForm.jsx  # crear/editar semanas y asignar rutinas a cada día
+    components/TodayWorkout.jsx # rutina del día de la semana activa
+    components/ExerciseSwapModal.jsx # cambiar un ejercicio del plan automático (local o con IA)
     components/ui/          # primitivas (Card, Banner, Tabs, ...)
     hooks/ lib/ context/ views/
 ```
@@ -57,7 +63,12 @@ frontend/  # Vite + React + Tailwind v4
 - `preferences` — `favorite` / `banned` / `restriction`.
 - `meal_plans` — semana generada: fase, calorías y macros objetivo.
 - `meals` — comidas por día y momento, con ingredientes y feedback.
-- `workouts` + `exercises` — rutina diaria, series, reps, peso y RIR.
+- `workouts` + `exercises` — plan automático antiguo, series, reps, peso y RIR.
+- `routines` + `routine_exercises` — rutinas reutilizables creadas a partir del
+  catálogo de ejercicios.
+- `training_weeks` + `training_week_days` — semanas con 7 días; cada día apunta a
+  una rutina o a descanso. Solo una semana puede estar activa.
+- `exercise_records` — pesos, reps, series y PR por ejercicio del catálogo.
 - `progress_logs` — peso, calorías reales y marcas del gimnasio.
 - `recipes` — **recetario curado**. Cada platillo tiene estado: `active` (cuenta
   para la meta de ~30 y se usa en la dieta), `proposed` (propuesta manual o de IA, espera
@@ -92,13 +103,19 @@ frontend/  # Vite + React + Tailwind v4
   Sin instrucción toma otra receta `active` del recetario (sin IA); con una
   instrucción («más ligero», «sin lácteos»…) la IA crea una nueva que se usa en
   el plan pero no se guarda hasta que la guardes. El feedback 👍/👎 se reinicia.
-- **Catálogo de ejercicios (meta ~30, sin tope):** misma idea para la rutina. El split se
-  elige automáticamente por fase/experiencia (full body → torso/pierna →
-  push/pull/legs) y la semana se arma **solo** con ejercicios `active`, con
-  series/reps/RIR según `progression`. Los bloques son empuje / tracción / pierna
-  / core (default 8/8/8/6 activos). «Propuestas IA» repone hasta 10 según el
-  déficit; `POST /api/workouts/:id/exercises/:exId/swap` cambia un ejercicio por
-  otro del mismo bloque (local o con IA).
+- **Catálogo de ejercicios (meta ~30, sin tope):** cada ejercicio guarda nombre,
+  grupo muscular, equipo, series, repeticiones o tiempo, notas y enlaces/imágenes/
+  videos. El alta manual entra activa para poder usarla de inmediato; «Propuestas
+  IA» repone hasta 10 según el déficit y queda como propuesta hasta aprobarla.
+- **Rutinas y semanas:** crea rutinas eligiendo ejercicios del catálogo (puedes
+  ajustar series/reps/tiempo/notas por rutina). Luego crea semanas con 7 días y
+  asigna una rutina o descanso a cada día. La semana activa determina qué rutina
+  se muestra en «Hoy» según el día actual. Puedes registrar pesos y ver el PR y
+  el histórico de cada ejercicio.
+- **Plan automático (opcional):** el split se elige por fase/experiencia (full
+  body → torso/pierna → push/pull/legs) y se arma solo con ejercicios `active`.
+  `POST /api/workouts/:id/exercises/:exId/swap` cambia un ejercicio por otro del
+  mismo bloque (local o con IA).
 - **Feedback loop:** al marcar 👎 eliges manualmente qué vetar (ingredientes y/o
   el plato completo); se guarda en `preferences` y no se vuelve a proponer.
 - **Proveedor de recetas (TheMealDB, activo por defecto):** `RECIPE_PROVIDER=themealdb`
