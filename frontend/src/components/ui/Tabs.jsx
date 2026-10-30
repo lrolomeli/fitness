@@ -44,6 +44,24 @@ function Check({ className = '' }) {
   );
 }
 
+function Close({ className = '' }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M18 6L6 18M6 6l12 12" />
+    </svg>
+  );
+}
+
 export default function Tabs({ tabs, value, onChange, className = '' }) {
   const [open, setOpen] = useState(false);
   const index = Math.max(
@@ -140,21 +158,32 @@ export default function Tabs({ tabs, value, onChange, className = '' }) {
 
       {open && (
         <div
-          className="fixed inset-0 z-40 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:hidden"
-          onClick={() => setOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Cambiar sección"
+          className="fixed inset-0 z-40 flex h-dvh w-full animate-fade-up flex-col bg-[#1a1020] pt-[env(safe-area-inset-top)] sm:hidden"
         >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Cambiar sección"
-            onClick={(event) => event.stopPropagation()}
-            className="max-h-[85vh] w-full animate-fade-up overflow-y-auto rounded-t-3xl border border-white/10 bg-[#1a1020] p-5 pb-8"
-          >
-            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/20" />
-            <h2 className="mb-3 text-[0.72rem] uppercase tracking-[0.14em] text-white/55">
-              Secciones
-            </h2>
-            <div className="flex flex-col gap-1.5">
+          <header className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-3">
+            <div>
+              <h2 className="text-[0.72rem] uppercase tracking-[0.14em] text-white/55">
+                Secciones
+              </h2>
+              <p className="mt-0.5 text-sm text-white/40">
+                {index + 1} de {tabs.length}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-label="Cerrar"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/70 transition-colors hover:text-white active:bg-white/15"
+            >
+              <Close className="h-5 w-5" />
+            </button>
+          </header>
+
+          <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+            <div className="flex flex-col gap-2">
               {tabs.map((tab) => {
                 const active = value === tab.id;
                 return (
@@ -164,14 +193,14 @@ export default function Tabs({ tabs, value, onChange, className = '' }) {
                     onClick={() => select(tab.id)}
                     aria-current={active ? 'page' : undefined}
                     className={cn(
-                      'flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left text-sm transition-colors',
+                      'flex min-h-14 items-center justify-between gap-3 rounded-xl border px-5 py-4 text-left text-base transition-colors',
                       active
                         ? 'border-accent/70 bg-accent/25 text-white'
                         : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white',
                     )}
                   >
                     <span>{tab.label}</span>
-                    {active && <Check className="h-4 w-4 shrink-0 text-accent-soft" />}
+                    {active && <Check className="h-5 w-5 shrink-0 text-accent-soft" />}
                   </button>
                 );
               })}
