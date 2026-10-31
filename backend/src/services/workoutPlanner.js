@@ -1,16 +1,28 @@
 const exerciseLibrary = require('../db/repos/exerciseLibrary');
+const muscleGroups = require('../db/repos/muscleGroups');
 
-const BLOCKS = ['empuje', 'traccion', 'pierna', 'core'];
-const BLOCK_LABELS = {
-  empuje: 'Empuje',
-  traccion: 'Tracción',
-  pierna: 'Pierna',
-  core: 'Core',
-};
+// Objetivo por defecto de los grupos que no tienen uno propio.
+const DEFAULT_BLOCK_TARGET = 6;
 
-// Objetivo del catálogo curado: 30 ejercicios activos por bloque.
-const BLOCK_TARGETS = { empuje: 8, traccion: 8, pierna: 8, core: 6 };
-const POOL_TARGET = Object.values(BLOCK_TARGETS).reduce((a, b) => a + b, 0);
+function blocks() {
+  return muscleGroups.keys();
+}
+
+function blockLabels() {
+  return muscleGroups.labels();
+}
+
+function blockTargets() {
+  const configured = muscleGroups.targets();
+  return blocks().reduce((acc, block) => {
+    acc[block] = configured[block] > 0 ? configured[block] : DEFAULT_BLOCK_TARGET;
+    return acc;
+  }, {});
+}
+
+function poolTarget() {
+  return Object.values(blockTargets()).reduce((a, b) => a + b, 0);
+}
 
 // Catálogo semilla (se inserta una sola vez, como activos).
 const SEED = [
@@ -50,7 +62,8 @@ let seeded = false;
 
 function ensureSeeded() {
   if (seeded) return;
-  SEED.forEach((s) => {
+  const valid = new Set(blocks());
+  SEED.filter((s) => valid.has(s.block)).forEach((s) => {
     exerciseLibrary.upsertExercise({ ...s, source: 'seed', status: 'active' });
   });
   seeded = true;
@@ -68,7 +81,7 @@ function shuffle(arr) {
 function coverageByBlock() {
   ensureSeeded();
   const counts = exerciseLibrary.countActiveByBlock();
-  return BLOCKS.reduce((acc, block) => {
+  return blocks().reduce((acc, block) => {
     acc[block] = counts[block] || 0;
     return acc;
   }, {});
@@ -76,9 +89,10 @@ function coverageByBlock() {
 
 function poolDeficit() {
   const counts = exerciseLibrary.countActiveByBlock();
-  return BLOCKS.reduce((acc, block) => {
+  const targets = blockTargets();
+  return blocks().reduce((acc, block) => {
     const have = counts[block] || 0;
-    acc[block] = Math.max(0, BLOCK_TARGETS[block] - have);
+    acc[block] = Math.max(0, targets[block] - have);
     return acc;
   }, {});
 }
@@ -94,8 +108,10 @@ function localAlternatives(block, { excludeNames = [] } = {}) {
 // Acepta tanto la clave del bloque ("empuje") como su etiqueta ("Empuje").
 function normalizeBlock(value) {
   const v = String(value || '').trim().toLowerCase();
-  if (BLOCKS.includes(v)) return v;
-  const found = Object.entries(BLOCK_LABELS).find(([, label]) => label.toLowerCase() === v);
+  if (muscleGroups.exists(v)) return v;
+  const found = Object.entries(blockLabels()).find(
+    ([, label]) => String(label).trim().toLowerCase() === v
+  );
   return found ? found[0] : null;
 }
 
@@ -195,7 +211,7 @@ function buildWeek(ctx) {
   const days = splitFor(ctx);
 
   const pools = {};
-  for (const block of BLOCKS) {
+  for (const block of blocks()) {
     pools[block] = shuffle(exerciseLibrary.listActive(block));
   }
 
@@ -239,10 +255,10 @@ function buildWeek(ctx) {
 }
 
 module.exports = {
-  BLOCKS,
-  BLOCK_LABELS,
-  BLOCK_TARGETS,
-  POOL_TARGET,
+  blocks,
+  blockLabels,
+  blockTargets,
+  poolTarget,
   ensureSeeded,
   coverageByBlock,
   poolDeficit,

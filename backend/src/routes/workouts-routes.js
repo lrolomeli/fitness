@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const workouts = require('../db/repos/workouts');
+const muscleGroups = require('../db/repos/muscleGroups');
 const workoutPlanner = require('../services/workoutPlanner');
 const ai = require('../services/ai');
 const { buildContext } = require('../services/context');
@@ -90,7 +91,7 @@ router.post('/:id/exercises/:exId/swap', async (req, res) => {
       const generated = await ai.generateExerciseSwap(
         ctx.workout,
         { name: exercise.name, muscle: block || exercise.muscle },
-        { instruction, excludeNames }
+        { instruction, excludeNames, groups: muscleGroups.list() }
       );
       if (!generated) return null;
       return applyName(

@@ -82,6 +82,16 @@ CREATE TABLE IF NOT EXISTS exercises (
   notes TEXT
 );
 
+CREATE TABLE IF NOT EXISTS muscle_groups (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  key TEXT NOT NULL UNIQUE,
+  label TEXT NOT NULL,
+  target INTEGER NOT NULL DEFAULT 6,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS exercise_library (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
@@ -219,6 +229,30 @@ function addColumnIfMissing(table, column, definition) {
   }
 }
 
+const DEFAULT_MUSCLE_GROUPS = [
+  { key: 'empuje', label: 'Empuje', target: 8 },
+  { key: 'traccion', label: 'Tracción', target: 8 },
+  { key: 'pierna', label: 'Pierna', target: 8 },
+  { key: 'core', label: 'Core', target: 6 },
+];
+
+// Solo se siembran si la tabla está vacía: así los grupos eliminados por el
+// usuario no reaparecen al reiniciar el servidor.
+function seedMuscleGroups() {
+  const row = db.queryOne(DB_NAME, 'SELECT COUNT(*) AS n FROM muscle_groups');
+  if (row && row.n > 0) return;
+
+  const ts = new Date().toISOString();
+  DEFAULT_MUSCLE_GROUPS.forEach((group, index) => {
+    db.run(
+      DB_NAME,
+      `INSERT INTO muscle_groups (key, label, target, sort_order, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [group.key, group.label, group.target, index, ts, ts]
+    );
+  });
+}
+
 function migrate() {
   const columns = db.queryAll(DB_NAME, 'PRAGMA table_info(recipes)').map((c) => c.name);
   if (!columns.includes('status')) {
@@ -243,6 +277,7 @@ async function init() {
   await db.init(DB_NAME);
   db.exec(DB_NAME, SCHEMA);
   migrate();
+  seedMuscleGroups();
 }
 
 module.exports = { DB_NAME, init };

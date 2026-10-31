@@ -12,7 +12,6 @@ import {
   BTN_GHOST,
   BTN_DANGER,
   DAY_NAMES,
-  BLOCK_LABELS,
   formatPrescription,
 } from '../lib/ui';
 
@@ -22,7 +21,7 @@ const TABS = [
   { value: 'semanas', label: 'Semanas' },
 ];
 
-function RoutineCard({ routine, onEdit, onRemove }) {
+function RoutineCard({ routine, labels, onEdit, onRemove }) {
   return (
     <Card
       title={routine.name}
@@ -47,7 +46,7 @@ function RoutineCard({ routine, onEdit, onRemove }) {
             >
               <span className="min-w-0 truncate text-sm text-white/85">{exercise.name}</span>
               <span className="shrink-0 text-[0.68rem] text-white/45">
-                {BLOCK_LABELS[exercise.block] || exercise.block || ''}
+                {labels[exercise.block] || exercise.block || ''}
                 {formatPrescription(exercise) ? ` · ${formatPrescription(exercise)}` : ''}
               </span>
             </li>
@@ -109,6 +108,7 @@ function WeekCard({ week, onActivate, onEdit, onRemove }) {
 export default function WorkoutsSection() {
   const [tab, setTab] = useState('hoy');
   const [catalog, setCatalog] = useState([]);
+  const [groups, setGroups] = useState([]);
   const [routines, setRoutines] = useState([]);
   const [weeks, setWeeks] = useState([]);
   const [today, setToday] = useState(null);
@@ -119,13 +119,15 @@ export default function WorkoutsSection() {
   const [weekForm, setWeekForm] = useState({ open: false, week: null });
 
   const load = async () => {
-    const [catalogData, routinesData, weeksData, todayData] = await Promise.all([
+    const [catalogData, groupsData, routinesData, weeksData, todayData] = await Promise.all([
       api.get('/api/exercises'),
+      api.get('/api/muscle-groups'),
       api.get('/api/routines'),
       api.get('/api/training-weeks'),
       api.get('/api/training-weeks/today'),
     ]);
     setCatalog(catalogData.active || []);
+    setGroups(groupsData || []);
     setRoutines(routinesData);
     setWeeks(weeksData);
     setToday(todayData);
@@ -216,6 +218,10 @@ export default function WorkoutsSection() {
   if (loading) return <Spinner />;
 
   const activeWeek = weeks.find((week) => week.is_active) || null;
+  const labels = groups.reduce((acc, group) => {
+    acc[group.key] = group.label;
+    return acc;
+  }, {});
 
   return (
     <div className="flex flex-col gap-3.5">
@@ -229,6 +235,7 @@ export default function WorkoutsSection() {
           today={today}
           activeWeek={activeWeek}
           loading={loading}
+          labels={labels}
           onRefresh={refreshToday}
           onOpenWeeks={() => setTab('semanas')}
         />
@@ -265,6 +272,7 @@ export default function WorkoutsSection() {
               <RoutineCard
                 key={routine.id}
                 routine={routine}
+                labels={labels}
                 onEdit={(item) => setRoutineForm({ open: true, routine: item })}
                 onRemove={removeRoutine}
               />
@@ -317,6 +325,7 @@ export default function WorkoutsSection() {
         <RoutineForm
           routine={routineForm.routine}
           catalog={catalog}
+          groups={groups}
           onClose={() => setRoutineForm({ open: false, routine: null })}
           onSaved={saveRoutine}
         />

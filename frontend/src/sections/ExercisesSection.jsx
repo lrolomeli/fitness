@@ -5,6 +5,7 @@ import Spinner from '../components/ui/Spinner';
 import Collapsible from '../components/ui/Collapsible';
 import ExerciseForm from '../components/ExerciseForm';
 import ExerciseRecordModal from '../components/ExerciseRecordModal';
+import MuscleGroupsModal from '../components/MuscleGroupsModal';
 import { api } from '../lib/api';
 import {
   BTN,
@@ -16,14 +17,14 @@ import {
   formatPrescription,
 } from '../lib/ui';
 
-function ExerciseRow({ exercise, actions }) {
+function ExerciseRow({ exercise, actions, labels }) {
   const prescription = formatPrescription(exercise);
   return (
     <li className="flex items-start justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5">
       <div className="min-w-0">
         <p className="break-words text-sm text-white">{exercise.name}</p>
         <p className="text-xs text-white/45">
-          {BLOCK_LABELS[exercise.block] || exercise.block}
+          {labels[exercise.block] || exercise.block}
           {exercise.equipment ? ` · ${exercise.equipment}` : ''}
           {exercise.source ? ` · ${exercise.source}` : ''}
         </p>
@@ -59,6 +60,7 @@ export default function ExercisesSection({ state, onChanged }) {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [recordTarget, setRecordTarget] = useState(null);
+  const [groupsOpen, setGroupsOpen] = useState(false);
 
   const load = async () => setData(await api.get('/api/exercises'));
 
@@ -176,8 +178,24 @@ export default function ExercisesSection({ state, onChanged }) {
   const active = data?.active || [];
   const proposed = data?.proposed || [];
   const disabled = data?.disabled || [];
+  const groups = data?.groups?.length
+    ? data.groups
+    : BLOCK_ORDER.map((key) => ({
+        key,
+        label: BLOCK_LABELS[key],
+        target: targets[key] || 0,
+      }));
+  const groupKeys = groups.map((group) => group.key);
+  const labels = groups.reduce((acc, group) => {
+    acc[group.key] = group.label;
+    return acc;
+  }, {});
+  const counts = [...active, ...proposed, ...disabled].reduce((acc, exercise) => {
+    acc[exercise.block] = (acc[exercise.block] || 0) + 1;
+    return acc;
+  }, {});
 
-  const activeByBlock = BLOCK_ORDER.reduce((acc, block) => {
+  const activeByBlock = groupKeys.reduce((acc, block) => {
     acc[block] = active.filter((ex) => ex.block === block);
     return acc;
   }, {});
@@ -197,6 +215,14 @@ export default function ExercisesSection({ state, onChanged }) {
         title={`Catálogo activo · ${totalActive} ejercicio${totalActive === 1 ? '' : 's'}`}
         action={
           <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setGroupsOpen(true)}
+              disabled={busy}
+              className={BTN_GHOST}
+            >
+              Grupos
+            </button>
             <button type="button" onClick={openCreate} disabled={busy} className={BTN_GHOST}>
               Agregar
             </button>
@@ -207,15 +233,15 @@ export default function ExercisesSection({ state, onChanged }) {
         }
       >
         <div className="flex flex-wrap gap-1.5">
-          {BLOCK_ORDER.map((block) => {
-            const have = coverage[block] || 0;
-            const goal = targets[block] || 0;
+          {groups.map((group) => {
+            const have = coverage[group.key] || 0;
+            const goal = targets[group.key] || group.target || 0;
             return (
               <span
-                key={block}
+                key={group.key}
                 className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[0.7rem] text-white/60"
               >
-                {BLOCK_LABELS[block]} {have}
+                {group.label} {have}
                 <span className="text-white/35"> · meta {goal || '?'}</span>
                 {goal > 0 && have >= goal ? ' ✓' : ''}
               </span>
@@ -228,14 +254,19 @@ export default function ExercisesSection({ state, onChanged }) {
         </p>
       </Card>
 
-      {BLOCK_ORDER.map((block) => {
+      {groupKeys.map((block) => {
         const blockExercises = activeByBlock[block];
         if (!blockExercises.length) return null;
         return (
-          <Card key={block} title={BLOCK_LABELS[block]}>
+          <Card key={block} title={labels[block] || block}>
             <ul className="flex flex-col gap-2">
               {blockExercises.map((ex) => (
-                <ExerciseRow key={ex.id} exercise={ex} actions={renderActions(ex, 'active')} />
+                <ExerciseRow
+                  key={ex.id}
+                  exercise={ex}
+                  labels={labels}
+                  actions={renderActions(ex, 'active')}
+                />
               ))}
             </ul>
           </Card>
@@ -252,7 +283,12 @@ export default function ExercisesSection({ state, onChanged }) {
         ) : (
           <ul className="flex flex-col gap-2">
             {proposed.map((ex) => (
-              <ExerciseRow key={ex.id} exercise={ex} actions={renderActions(ex, 'proposed')} />
+              <ExerciseRow
+                key={ex.id}
+                exercise={ex}
+                labels={labels}
+                actions={renderActions(ex, 'proposed')}
+              />
             ))}
           </ul>
         )}
@@ -262,7 +298,12 @@ export default function ExercisesSection({ state, onChanged }) {
         <Collapsible title="Deshabilitados" subtitle={`${disabled.length} ocultos`}>
           <ul className="flex flex-col gap-2">
             {disabled.map((ex) => (
-              <ExerciseRow key={ex.id} exercise={ex} actions={renderActions(ex, 'disabled')} />
+              <ExerciseRow
+                key={ex.id}
+                exercise={ex}
+                labels={labels}
+                actions={renderActions(ex, 'disabled')}
+              />
             ))}
           </ul>
         </Collapsible>
@@ -271,11 +312,22 @@ export default function ExercisesSection({ state, onChanged }) {
       {formOpen && (
         <ExerciseForm
           exercise={editing}
+          groups={groups}
+          onGroupsChanged={load}
           onClose={() => setFormOpen(false)}
           onSaved={() => {
             setNotice(editing ? 'Ejercicio actualizado' : 'Ejercicio agregado al catálogo');
             refresh();
           }}
+        />
+      )}
+
+      {groupsOpen && (
+        <MuscleGroupsModal
+          groups={groups}
+          counts={counts}
+          onClose={() => setGroupsOpen(false)}
+          onChanged={refresh}
         />
       )}
 

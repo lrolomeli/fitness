@@ -14,12 +14,14 @@ import {
 let keyCounter = 0;
 const nextKey = () => `ex-${Date.now()}-${keyCounter++}`;
 
-function fromRoutine(routine) {
+const FALLBACK_GROUPS = BLOCK_ORDER.map((key) => ({ key, label: BLOCK_LABELS[key] }));
+
+function fromRoutine(routine, defaultBlock) {
   return (routine?.exercises || []).map((exercise) => ({
     _key: nextKey(),
     exercise_id: exercise.exercise_id ?? null,
     name: exercise.name || '',
-    block: exercise.block || 'empuje',
+    block: exercise.block || defaultBlock,
     sets: exercise.sets ?? '',
     reps: exercise.reps ?? '',
     duration_seconds: exercise.duration_seconds ?? '',
@@ -27,13 +29,26 @@ function fromRoutine(routine) {
   }));
 }
 
-export default function RoutineForm({ routine, catalog, onClose, onSaved }) {
+export default function RoutineForm({
+  routine,
+  catalog,
+  groups = FALLBACK_GROUPS,
+  onClose,
+  onSaved,
+}) {
   const editing = Boolean(routine?.id);
+  const availableGroups = groups.length ? groups : FALLBACK_GROUPS;
+  const labels = availableGroups.reduce((acc, group) => {
+    acc[group.key] = group.label;
+    return acc;
+  }, {});
   const [form, setForm] = useState({
     name: routine?.name || '',
     description: routine?.description || '',
   });
-  const [exercises, setExercises] = useState(() => fromRoutine(routine));
+  const [exercises, setExercises] = useState(() =>
+    fromRoutine(routine, availableGroups[0]?.key || 'empuje')
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -162,7 +177,7 @@ export default function RoutineForm({ routine, catalog, onClose, onSaved }) {
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm text-white">{ex.name}</p>
                         <p className="text-[0.68rem] text-white/45">
-                          {BLOCK_LABELS[ex.block] || ex.block}
+                          {labels[ex.block] || ex.block}
                           {formatPrescription(ex) ? ` · ${formatPrescription(ex)}` : ''}
                         </p>
                       </div>
@@ -253,11 +268,11 @@ export default function RoutineForm({ routine, catalog, onClose, onSaved }) {
               disabled={busy}
             >
               <option value="">＋ Agregar ejercicio del catálogo…</option>
-              {BLOCK_ORDER.map((block) => {
-                const items = catalog.filter((c) => c.block === block);
+              {availableGroups.map((group) => {
+                const items = catalog.filter((c) => c.block === group.key);
                 if (!items.length) return null;
                 return (
-                  <optgroup key={block} label={BLOCK_LABELS[block]} className="bg-[#1a1020]">
+                  <optgroup key={group.key} label={group.label} className="bg-[#1a1020]">
                     {items.map((c) => (
                       <option key={c.id} value={c.id} className="bg-[#1a1020]">
                         {c.name}

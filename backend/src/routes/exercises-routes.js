@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const exerciseLibrary = require('../db/repos/exerciseLibrary');
 const exerciseRecords = require('../db/repos/exerciseRecords');
+const muscleGroups = require('../db/repos/muscleGroups');
 const workoutPlanner = require('../services/workoutPlanner');
 const ai = require('../services/ai');
 const { allocateBatch } = require('../services/proposalBatch');
@@ -10,14 +11,16 @@ const router = Router();
 
 router.get('/', (req, res) => {
   workoutPlanner.ensureSeeded();
+  const groups = muscleGroups.list();
   res.json({
     active: exerciseLibrary.listActive(req.query.block),
     proposed: exerciseLibrary.listProposed(),
     disabled: exerciseLibrary.listDisabled(),
     coverage: workoutPlanner.coverageByBlock(),
-    targets: workoutPlanner.BLOCK_TARGETS,
-    poolTarget: workoutPlanner.POOL_TARGET,
-    labels: workoutPlanner.BLOCK_LABELS,
+    targets: workoutPlanner.blockTargets(),
+    poolTarget: workoutPlanner.poolTarget(),
+    labels: workoutPlanner.blockLabels(),
+    groups,
   });
 });
 
@@ -40,8 +43,8 @@ router.post('/', (req, res) => {
   const body = req.body || {};
   const name = String(body.name || '').trim();
   if (!name) return res.status(400).json({ error: 'El nombre es obligatorio' });
-  if (!exerciseLibrary.BLOCKS.includes(body.block)) {
-    return res.status(400).json({ error: 'block debe ser empuje, traccion, pierna o core' });
+  if (!muscleGroups.exists(body.block)) {
+    return res.status(400).json({ error: 'Grupo muscular inválido' });
   }
 
   const created = exerciseLibrary.upsertExercise({
@@ -64,10 +67,15 @@ router.post('/proposals', async (req, res) => {
     }
     const deficit = workoutPlanner.poolDeficit();
     const total = Object.values(deficit).reduce((a, b) => a + b, 0);
-    const weights = total ? deficit : workoutPlanner.BLOCK_TARGETS;
+    const groups = muscleGroups.list();
+    const weights = total ? deficit : workoutPlanner.blockTargets();
 
     const target = Math.max(10, total);
-    const batch = allocateBatch(weights, workoutPlanner.BLOCKS, target);
+    const batch = allocateBatch(
+      weights,
+      groups.map((group) => group.key),
+      target
+    );
     const wanted = Object.values(batch).reduce((a, b) => a + b, 0);
     if (!wanted) return res.json({ created: [] });
 
@@ -76,11 +84,12 @@ router.post('/proposals', async (req, res) => {
     const generated = await ai.generateExerciseProposals(ctx.workout, {
       deficit: batch,
       existingNames,
+      groups,
     });
 
     const created = [];
     for (const ex of generated) {
-      if (!exerciseLibrary.BLOCKS.includes(ex.block)) continue;
+      if (!muscleGroups.exists(ex.block)) continue;
       if (!ex.name) continue;
       const saved = exerciseLibrary.upsertExercise({
         name: ex.name,
@@ -151,8 +160,8 @@ router.patch('/:id/status', (req, res) => {
 
 router.patch('/:id', (req, res) => {
   const body = req.body || {};
-  if (body.block !== undefined && !exerciseLibrary.BLOCKS.includes(body.block)) {
-    return res.status(400).json({ error: 'block debe ser empuje, traccion, pierna o core' });
+  if (body.block !== undefined && !muscleGroups.exists(body.block)) {
+    return res.status(400).json({ error: 'Grupo muscular inválido' });
   }
   try {
     const updated = exerciseLibrary.update(Number(req.params.id), exercisePayload(body));

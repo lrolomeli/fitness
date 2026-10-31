@@ -50,33 +50,41 @@ async function generateJson({ system, prompt, schema }) {
 // =========================
 // Esquemas de salida
 // =========================
-const EXERCISE_FIELDS = {
-  name: { type: 'string' },
-  block: { type: 'string', enum: ['empuje', 'traccion', 'pierna', 'core'] },
-  equipment: { type: 'string' },
-  description: { type: 'string' },
-};
+const DEFAULT_EXERCISE_BLOCKS = ['empuje', 'traccion', 'pierna', 'core'];
 
-const EXERCISE_PROPOSAL_SCHEMA = {
-  type: 'object',
-  properties: {
-    exercises: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: EXERCISE_FIELDS,
-        required: ['name', 'block'],
+function exerciseFields(blocks = DEFAULT_EXERCISE_BLOCKS) {
+  return {
+    name: { type: 'string' },
+    block: { type: 'string', enum: blocks },
+    equipment: { type: 'string' },
+    description: { type: 'string' },
+  };
+}
+
+function exerciseProposalSchema(blocks) {
+  return {
+    type: 'object',
+    properties: {
+      exercises: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: exerciseFields(blocks),
+          required: ['name', 'block'],
+        },
       },
     },
-  },
-  required: ['exercises'],
-};
+    required: ['exercises'],
+  };
+}
 
-const EXERCISE_SWAP_SCHEMA = {
-  type: 'object',
-  properties: EXERCISE_FIELDS,
-  required: ['name', 'block'],
-};
+function exerciseSwapSchema(blocks) {
+  return {
+    type: 'object',
+    properties: exerciseFields(blocks),
+    required: ['name', 'block'],
+  };
+}
 
 const RECIPE_FIELDS = {
   slot: { type: 'string', enum: ['breakfast', 'lunch', 'dinner', 'snack'] },
@@ -118,10 +126,16 @@ const RECIPE_SYSTEM =
   'con ingredientes comunes de supermercado, en español y con porciones realistas. Respetas ' +
   'estrictamente las restricciones y alimentos vetados del usuario y evitas lo que no le gusta.';
 
-const EXERCISE_SYSTEM =
-  'Eres un entrenador personal. Propones ejercicios de hipertrofia con nombre común de gimnasio, ' +
-  'en español. Clasificas cada ejercicio en uno de estos bloques: empuje (pecho, hombro, tríceps), ' +
-  'traccion (espalda, bíceps), pierna (cuádriceps, femoral, glúteo, gemelo) o core (abdominales).';
+function exerciseSystem(groups = []) {
+  const detail = groups.length
+    ? groups.map((group) => `${group.key} (${group.label})`).join(', ')
+    : DEFAULT_EXERCISE_BLOCKS.join(', ');
+  return (
+    'Eres un entrenador personal. Propones ejercicios de hipertrofia con nombre común de gimnasio, ' +
+    `en español. Clasificas cada ejercicio en uno de estos grupos musculares: ${detail}. ` +
+    'Usa exactamente la clave del grupo en el campo "block".'
+  );
+}
 
 function listBlock(title, items) {
   if (!items || !items.length) return '';
@@ -179,30 +193,48 @@ function buildSwapPrompt(ctx, current, { instruction, usedTitles = [] } = {}) {
   );
 }
 
-const BLOCK_LABELS = { empuje: 'empuje', traccion: 'tracción', pierna: 'pierna', core: 'core' };
+function groupLabelMap(groups = []) {
+  return groups.reduce((acc, group) => {
+    acc[group.key] = group.label;
+    return acc;
+  }, {});
+}
 
-function buildExerciseProposalPrompt(ctx, { deficit = {}, existingNames = [] } = {}) {
+function buildExerciseProposalPrompt(
+  ctx,
+  { deficit = {}, existingNames = [], groups = [] } = {}
+) {
   const total = Object.values(deficit).reduce((a, b) => a + b, 0);
+  const labels = groupLabelMap(groups);
   const detail = Object.entries(deficit)
     .filter(([, n]) => n > 0)
-    .map(([block, n]) => `${n} de ${BLOCK_LABELS[block] || block}`)
+    .map(([block, n]) => `${n} de ${labels[block] || block}`)
     .join(', ');
+  const allowed = groups.length
+    ? groups.map((group) => `${group.key} (${group.label})`).join(', ')
+    : DEFAULT_EXERCISE_BLOCKS.join(', ');
 
   return (
     `Propón ${total} ejercicios nuevos para el catálogo: ${detail}.\n\n` +
     `Fase actual: ${ctx.phaseName} (${ctx.phaseTraining}). RIR objetivo: ${ctx.phaseRir}.\n` +
     `Perfil: experiencia ${ctx.experience_level || 'principiante'}, peso ${ctx.weight_kg || '?'} kg.\n` +
     listBlock('Ejercicios que ya tiene (NO repetir estos nombres)', existingNames) +
-    `\n\nCada ejercicio debe indicar su bloque (empuje, traccion, pierna o core) y el equipo típico ` +
-    `(barra, mancuernas, polea, máquina o peso corporal). No repitas nombres existentes ni entre sí.`
+    `\n\nCada ejercicio debe indicar su grupo muscular usando exactamente una de estas claves: ` +
+    `${allowed}. Incluye el equipo típico (barra, mancuernas, polea, máquina o peso corporal). ` +
+    `No repitas nombres existentes ni entre sí.`
   );
 }
 
-function buildExerciseSwapPrompt(ctx, current, { instruction, excludeNames = [] } = {}) {
+function buildExerciseSwapPrompt(
+  ctx,
+  current,
+  { instruction, excludeNames = [], groups = [] } = {}
+) {
+  const labels = groupLabelMap(groups);
   return (
     `Sustituye UN ejercicio de la rutina.\n\n` +
-    `Ejercicio actual: "${current.name}" (bloque ${BLOCK_LABELS[current.muscle] || current.muscle}).\n` +
-    `Devuelve un ejercicio distinto del MISMO bloque.\n` +
+    `Ejercicio actual: "${current.name}" (bloque ${labels[current.muscle] || current.muscle}).\n` +
+    `Devuelve un ejercicio distinto del MISMO bloque, usando la clave "${current.muscle}".\n` +
     (instruction ? `Petición del usuario: "${instruction}".\n` : '') +
     `Fase actual: ${ctx.phaseName} (${ctx.phaseTraining}). RIR objetivo: ${ctx.phaseRir}.\n` +
     listBlock('Ejercicios ya usados (evitar repetir)', excludeNames) +
@@ -246,10 +278,12 @@ async function generateExerciseProposals(ctx, opts = {}) {
   const deficit = opts.deficit || {};
   const total = Object.values(deficit).reduce((a, b) => a + b, 0);
   if (!total) return [];
+  const groups = opts.groups || [];
+  const blocks = groups.length ? groups.map((group) => group.key) : DEFAULT_EXERCISE_BLOCKS;
   const generated = await generateJson({
-    system: EXERCISE_SYSTEM,
+    system: exerciseSystem(groups),
     prompt: buildExerciseProposalPrompt(ctx, { ...opts, deficit }),
-    schema: EXERCISE_PROPOSAL_SCHEMA,
+    schema: exerciseProposalSchema(blocks),
   });
   return Array.isArray(generated.exercises) ? generated.exercises : [];
 }
@@ -257,10 +291,12 @@ async function generateExerciseProposals(ctx, opts = {}) {
 // Genera una alternativa para un ejercicio. Devuelve el ejercicio o null.
 async function generateExerciseSwap(ctx, current, opts = {}) {
   if (!isConfigured()) return null;
+  const groups = opts.groups || [];
+  const blocks = groups.length ? groups.map((group) => group.key) : DEFAULT_EXERCISE_BLOCKS;
   const generated = await generateJson({
-    system: EXERCISE_SYSTEM,
+    system: exerciseSystem(groups),
     prompt: buildExerciseSwapPrompt(ctx, current, opts),
-    schema: EXERCISE_SWAP_SCHEMA,
+    schema: exerciseSwapSchema(blocks),
   });
   if (!generated || !generated.name) return null;
   return generated;

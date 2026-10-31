@@ -45,7 +45,14 @@ function WeekStrip({ week, todayDay }) {
   );
 }
 
-export default function TodayWorkout({ today, activeWeek, loading, onRefresh, onOpenWeeks }) {
+export default function TodayWorkout({
+  today,
+  activeWeek,
+  loading,
+  labels = BLOCK_LABELS,
+  onRefresh,
+  onOpenWeeks,
+}) {
   const [recordTarget, setRecordTarget] = useState(null);
   const [notice, setNotice] = useState('');
 
@@ -125,7 +132,7 @@ export default function TodayWorkout({ today, activeWeek, loading, onRefresh, on
                       <div className="min-w-0">
                         <p className="break-words text-sm text-white">{exercise.name}</p>
                         <p className="text-xs text-white/45">
-                          {BLOCK_LABELS[exercise.block] || exercise.block || 'Ejercicio'}
+                          {labels[exercise.block] || exercise.block || 'Ejercicio'}
                           {formatPrescription(exercise) ? ` · ${formatPrescription(exercise)}` : ''}
                         </p>
                         {exercise.notes && (

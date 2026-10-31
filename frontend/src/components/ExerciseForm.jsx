@@ -4,21 +4,25 @@ import { BTN, BTN_GHOST, BTN_DANGER, INPUT, LABEL, BLOCK_LABELS, BLOCK_ORDER } f
 
 const MEDIA_LABELS = { link: 'Enlace', image: 'Imagen', video: 'Video' };
 
-const emptyForm = {
-  block: 'empuje',
-  name: '',
-  equipment: '',
-  sets: '3',
-  reps: '8-12',
-  duration_seconds: '',
-  notes: '',
-  media: [],
-};
+const FALLBACK_GROUPS = BLOCK_ORDER.map((key) => ({ key, label: BLOCK_LABELS[key] }));
 
-function formFromExercise(exercise) {
-  if (!exercise) return emptyForm;
+function emptyForm(block) {
   return {
-    block: exercise.block || 'empuje',
+    block,
+    name: '',
+    equipment: '',
+    sets: '3',
+    reps: '8-12',
+    duration_seconds: '',
+    notes: '',
+    media: [],
+  };
+}
+
+function formFromExercise(exercise, defaultBlock) {
+  if (!exercise) return emptyForm(defaultBlock);
+  return {
+    block: exercise.block || defaultBlock,
     name: exercise.name || '',
     equipment: exercise.equipment || '',
     sets: exercise.sets ?? '',
@@ -29,8 +33,18 @@ function formFromExercise(exercise) {
   };
 }
 
-export default function ExerciseForm({ exercise, onClose, onSaved }) {
-  const [form, setForm] = useState(() => formFromExercise(exercise));
+export default function ExerciseForm({
+  exercise,
+  groups = FALLBACK_GROUPS,
+  onGroupsChanged,
+  onClose,
+  onSaved,
+}) {
+  const availableGroups = groups.length ? groups : FALLBACK_GROUPS;
+  const [form, setForm] = useState(() =>
+    formFromExercise(exercise, availableGroups[0]?.key || 'empuje')
+  );
+  const [newGroupLabel, setNewGroupLabel] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -55,8 +69,20 @@ export default function ExerciseForm({ exercise, onClose, onSaved }) {
     setBusy(true);
     setError('');
     try {
+      let block = form.block;
+      if (block === '__new__') {
+        const label = newGroupLabel.trim();
+        if (!label) {
+          setError('Escribe el nombre del nuevo grupo muscular');
+          return;
+        }
+        const group = await api.post('/api/muscle-groups', { label });
+        block = group.key;
+        await onGroupsChanged?.();
+      }
+
       const payload = {
-        block: form.block,
+        block,
         name: form.name.trim(),
         equipment: form.equipment,
         sets: form.sets,
@@ -100,13 +126,29 @@ export default function ExerciseForm({ exercise, onClose, onSaved }) {
               onChange={(e) => update('block', e.target.value)}
               disabled={busy}
             >
-              {BLOCK_ORDER.map((block) => (
-                <option key={block} value={block} className="bg-[#1a1020]">
-                  {BLOCK_LABELS[block]}
+              {availableGroups.map((group) => (
+                <option key={group.key} value={group.key} className="bg-[#1a1020]">
+                  {group.label}
                 </option>
               ))}
+              <option value="__new__" className="bg-[#1a1020]">
+                ＋ Nuevo grupo muscular…
+              </option>
             </select>
           </label>
+
+          {form.block === '__new__' && (
+            <label className={LABEL}>
+              Nombre del nuevo grupo
+              <input
+                className={INPUT}
+                value={newGroupLabel}
+                onChange={(e) => setNewGroupLabel(e.target.value)}
+                placeholder="P. ej. Hombro, Espalda, Glúteo…"
+                disabled={busy}
+              />
+            </label>
+          )}
 
           <label className={LABEL}>
             Nombre

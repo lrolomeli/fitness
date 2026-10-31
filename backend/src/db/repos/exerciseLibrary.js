@@ -1,7 +1,7 @@
 const { db, DB_NAME, lastRow, now, parseJson } = require('./helpers');
+const muscleGroups = require('./muscleGroups');
 
 const STATUSES = ['active', 'proposed', 'disabled'];
-const BLOCKS = ['empuje', 'traccion', 'pierna', 'core'];
 const MEDIA_TYPES = ['link', 'image', 'video'];
 
 function normalize(name) {
@@ -124,7 +124,7 @@ function toNullableNumber(value) {
 function upsertExercise(exercise) {
   const {
     name,
-    block = 'empuje',
+    block = muscleGroups.defaultKey(),
     equipment = null,
     source = 'manual',
     status,
@@ -176,10 +176,16 @@ function update(id, changes = {}) {
   const current = get(id);
   if (!current) return null;
 
-  const nextBlock = BLOCKS.includes(changes.block) ? changes.block : current.block;
+  const nextBlock =
+    changes.block !== undefined && muscleGroups.exists(changes.block)
+      ? changes.block
+      : current.block;
   const nextName = changes.name !== undefined ? String(changes.name).trim() : current.name;
   if (!nextName) {
     throw Object.assign(new Error('El nombre es obligatorio'), { status: 400 });
+  }
+  if (changes.block !== undefined && !muscleGroups.exists(changes.block)) {
+    throw Object.assign(new Error('Grupo muscular inválido'), { status: 400 });
   }
 
   db.run(
@@ -238,7 +244,6 @@ function remove(id) {
 
 module.exports = {
   STATUSES,
-  BLOCKS,
   MEDIA_TYPES,
   parse,
   parseMedia,
