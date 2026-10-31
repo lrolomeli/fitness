@@ -11,11 +11,20 @@ import {
   BTN,
   BTN_GHOST,
   BTN_DANGER,
+  INPUT,
   BLOCK_LABELS,
   BLOCK_ORDER,
   MEDIA_LABELS,
   formatPrescription,
 } from '../lib/ui';
+
+function normalizeText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
 
 function ExerciseRow({ exercise, actions, labels }) {
   const prescription = formatPrescription(exercise);
@@ -61,6 +70,8 @@ export default function ExercisesSection({ state, onChanged }) {
   const [editing, setEditing] = useState(null);
   const [recordTarget, setRecordTarget] = useState(null);
   const [groupsOpen, setGroupsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [groupFilter, setGroupFilter] = useState('all');
 
   const load = async () => setData(await api.get('/api/exercises'));
 
@@ -195,8 +206,33 @@ export default function ExercisesSection({ state, onChanged }) {
     return acc;
   }, {});
 
+  const searchTerm = normalizeText(search);
+  const matchesSearch = (exercise) => {
+    if (!searchTerm) return true;
+    return [exercise.name, exercise.equipment, exercise.notes, labels[exercise.block]].some(
+      (value) => normalizeText(value).includes(searchTerm)
+    );
+  };
+  const searchMatched = active.filter(matchesSearch);
+  const filteredActive =
+    groupFilter === 'all'
+      ? searchMatched
+      : searchMatched.filter((exercise) => exercise.block === groupFilter);
+  const hasFilters = Boolean(searchTerm) || groupFilter !== 'all';
+  const countForGroup = (block) => searchMatched.filter((exercise) => exercise.block === block).length;
+  const clearFilters = () => {
+    setSearch('');
+    setGroupFilter('all');
+  };
+  const chipClass = (isActive) =>
+    `rounded-full border px-2.5 py-1 text-[0.7rem] transition-colors ${
+      isActive
+        ? 'border-accent/60 bg-accent/30 text-white'
+        : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
+    }`;
+
   const activeByBlock = groupKeys.reduce((acc, block) => {
-    acc[block] = active.filter((ex) => ex.block === block);
+    acc[block] = filteredActive.filter((ex) => ex.block === block);
     return acc;
   }, {});
 
@@ -212,7 +248,11 @@ export default function ExercisesSection({ state, onChanged }) {
       )}
 
       <Card
-        title={`Catálogo activo · ${totalActive} ejercicio${totalActive === 1 ? '' : 's'}`}
+        title={
+          hasFilters
+            ? `Catálogo activo · ${filteredActive.length} de ${active.length}`
+            : `Catálogo activo · ${totalActive} ejercicio${totalActive === 1 ? '' : 's'}`
+        }
         action={
           <div className="flex gap-2">
             <button
@@ -248,6 +288,57 @@ export default function ExercisesSection({ state, onChanged }) {
             );
           })}
         </div>
+
+        <div className="mt-3 flex flex-col gap-2 rounded-xl border border-white/10 bg-white/5 p-2.5">
+          <div className="flex items-center gap-2">
+            <input
+              type="search"
+              className={`${INPUT} py-2`}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por nombre, grupo, equipo o notas…"
+              aria-label="Buscar ejercicios"
+            />
+            {hasFilters && (
+              <button type="button" onClick={clearFilters} className={`${BTN_GHOST} shrink-0`}>
+                Limpiar
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => setGroupFilter('all')}
+              aria-pressed={groupFilter === 'all'}
+              className={chipClass(groupFilter === 'all')}
+            >
+              Todos <span className="text-white/45">{searchMatched.length}</span>
+            </button>
+            {groups.map((group) => {
+              const groupCount = countForGroup(group.key);
+              const selected = groupFilter === group.key;
+              return (
+                <button
+                  key={group.key}
+                  type="button"
+                  onClick={() => setGroupFilter(group.key)}
+                  disabled={!selected && groupCount === 0}
+                  aria-pressed={selected}
+                  className={`${chipClass(selected)} disabled:cursor-not-allowed disabled:opacity-40`}
+                >
+                  {group.label} <span className="text-white/45">{groupCount}</span>
+                </button>
+              );
+            })}
+          </div>
+          {hasFilters && (
+            <p className="text-[0.7rem] text-white/40">
+              Mostrando {filteredActive.length} de {active.length} ejercicio
+              {active.length === 1 ? '' : 's'} activo{active.length === 1 ? '' : 's'}.
+            </p>
+          )}
+        </div>
+
         <p className="mt-2 text-xs text-white/40">
           Aquí guardas nombre, grupo muscular, series, repeticiones o tiempo y enlaces. Luego creas
           rutinas eligiendo de este catálogo.
@@ -272,6 +363,23 @@ export default function ExercisesSection({ state, onChanged }) {
           </Card>
         );
       })}
+
+      {filteredActive.length === 0 && (
+        <Card>
+          <div className="flex flex-col items-center gap-3 py-6 text-center">
+            <p className="text-sm text-white/45">
+              {active.length === 0
+                ? 'Aún no tienes ejercicios activos en el catálogo.'
+                : 'Ningún ejercicio coincide con los filtros.'}
+            </p>
+            {hasFilters && (
+              <button type="button" onClick={clearFilters} className={BTN_GHOST}>
+                Limpiar filtros
+              </button>
+            )}
+          </div>
+        </Card>
+      )}
 
       <Collapsible
         title="Propuestas"

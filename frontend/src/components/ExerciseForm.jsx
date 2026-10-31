@@ -1,10 +1,50 @@
 import { useState } from 'react';
 import { api } from '../lib/api';
-import { BTN, BTN_GHOST, BTN_DANGER, INPUT, LABEL, BLOCK_LABELS, BLOCK_ORDER } from '../lib/ui';
+import { isValidUrl, mediaHost, mediaPreview, normalizeUrl } from '../lib/media';
+import {
+  BTN,
+  BTN_GHOST,
+  BTN_DANGER,
+  INPUT,
+  LABEL,
+  BLOCK_LABELS,
+  BLOCK_ORDER,
+  MEDIA_LABELS,
+} from '../lib/ui';
 
-const MEDIA_LABELS = { link: 'Enlace', image: 'Imagen', video: 'Video' };
+const MEDIA_PLACEHOLDERS = {
+  link: 'https://ejemplo.com/articulo',
+  image: 'https://ejemplo.com/imagen.jpg',
+  video: 'https://www.youtube.com/watch?v=…',
+};
 
 const FALLBACK_GROUPS = BLOCK_ORDER.map((key) => ({ key, label: BLOCK_LABELS[key] }));
+
+function mediaBadge(type) {
+  if (type === 'image') return 'IMG';
+  if (type === 'video') return 'VID';
+  return 'URL';
+}
+
+function MediaThumb({ src, type }) {
+  const [failed, setFailed] = useState(false);
+  if (src && !failed) {
+    return (
+      <img
+        src={src}
+        alt=""
+        loading="lazy"
+        onError={() => setFailed(true)}
+        className="h-12 w-16 shrink-0 rounded-lg border border-white/10 object-cover"
+      />
+    );
+  }
+  return (
+    <span className="flex h-12 w-16 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-[0.6rem] uppercase tracking-wider text-white/35">
+      {mediaBadge(type)}
+    </span>
+  );
+}
 
 function emptyForm(block) {
   return {
@@ -52,7 +92,7 @@ export default function ExerciseForm({
 
   const update = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
-  const addMedia = () => update('media', [...form.media, { type: 'link', url: '' }]);
+  const addMedia = (type = 'link') => update('media', [...form.media, { type, url: '' }]);
   const updateMedia = (index, key, value) =>
     update(
       'media',
@@ -66,6 +106,19 @@ export default function ExerciseForm({
       setError('El nombre es obligatorio');
       return;
     }
+
+    const cleanMedia = [];
+    for (const item of form.media) {
+      const url = normalizeUrl(item.url);
+      if (!url) continue;
+      if (!isValidUrl(url)) {
+        setError(`El enlace «${url}» no es válido. Usa una URL http(s).`);
+        return;
+      }
+      if (cleanMedia.some((entry) => entry.url === url)) continue;
+      cleanMedia.push({ type: MEDIA_LABELS[item.type] ? item.type : 'link', url });
+    }
+
     setBusy(true);
     setError('');
     try {
@@ -89,7 +142,7 @@ export default function ExerciseForm({
         reps: form.reps,
         duration_seconds: form.duration_seconds,
         notes: form.notes,
-        media: form.media.filter((item) => String(item.url || '').trim()),
+        media: cleanMedia,
       };
 
       const saved = editing
@@ -107,7 +160,7 @@ export default function ExerciseForm({
 
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4">
-      <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-3xl border border-white/10 bg-[#1a1020] p-5 sm:rounded-3xl">
+      <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-t-3xl border border-white/10 bg-[#1a1020] p-5 sm:rounded-3xl">
         <h3 className="text-base font-semibold text-white">
           {editing ? 'Editar ejercicio' : 'Agregar ejercicio'}
         </h3>
@@ -223,37 +276,131 @@ export default function ExerciseForm({
             />
           </label>
 
-          <div className="flex flex-col gap-2">
-            <span className="text-sm text-white/70">Enlaces, imágenes o videos</span>
-            {form.media.map((item, index) => (
-              <div key={index} className="flex items-center gap-1.5">
-                <select
-                  value={item.type || 'link'}
-                  onChange={(e) => updateMedia(index, 'type', e.target.value)}
-                  disabled={busy}
-                  className={`${INPUT} w-24 shrink-0`}
-                >
-                  {Object.entries(MEDIA_LABELS).map(([value, label]) => (
-                    <option key={value} value={value} className="bg-[#1a1020]">
-                      {label}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  className={INPUT}
-                  value={item.url || ''}
-                  onChange={(e) => updateMedia(index, 'url', e.target.value)}
-                  placeholder="https://…"
-                  disabled={busy}
-                />
-                <button type="button" onClick={() => removeMedia(index)} className={BTN_DANGER}>
-                  ✕
-                </button>
-              </div>
-            ))}
-            <button type="button" onClick={addMedia} disabled={busy} className={BTN_GHOST}>
-              + Agregar enlace
-            </button>
+          <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm text-white/70">
+                Enlaces y multimedia
+                {form.media.length > 0 && (
+                  <span className="ml-1.5 text-xs text-white/40">({form.media.length})</span>
+                )}
+              </span>
+              <span className="text-[0.68rem] text-white/35">Opcional</span>
+            </div>
+            <p className="mt-1 text-[0.7rem] text-white/40">
+              Agrega un video de YouTube, una imagen o cualquier enlace de referencia.
+            </p>
+
+            {form.media.length === 0 ? (
+              <p className="mt-3 rounded-lg border border-dashed border-white/10 px-3 py-3 text-center text-xs text-white/35">
+                Aún no agregaste videos, imágenes ni enlaces.
+              </p>
+            ) : (
+              <ul className="mt-3 flex flex-col gap-2">
+                {form.media.map((item, index) => {
+                  const type = MEDIA_LABELS[item.type] ? item.type : 'link';
+                  const value = item.url || '';
+                  const valid = !value.trim() || isValidUrl(value);
+                  const preview = mediaPreview({ ...item, type });
+                  return (
+                    <li key={index} className="rounded-xl border border-white/10 bg-white/5 p-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex flex-wrap gap-1">
+                          {Object.entries(MEDIA_LABELS).map(([option, label]) => {
+                            const selected = type === option;
+                            return (
+                              <button
+                                key={option}
+                                type="button"
+                                onClick={() => updateMedia(index, 'type', option)}
+                                disabled={busy}
+                                aria-pressed={selected}
+                                className={`rounded-full border px-2.5 py-1 text-[0.68rem] transition-colors ${
+                                  selected
+                                    ? 'border-accent/60 bg-accent/25 text-white'
+                                    : 'border-white/10 bg-white/5 text-white/50 hover:bg-white/10 hover:text-white'
+                                }`}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeMedia(index)}
+                          disabled={busy}
+                          className={BTN_DANGER}
+                          aria-label="Eliminar enlace"
+                          title="Eliminar"
+                        >
+                          ✕
+                        </button>
+                      </div>
+
+                      <div className="mt-2 flex items-start gap-2">
+                        <MediaThumb key={`${preview}-${type}`} src={preview} type={type} />
+                        <div className="min-w-0 flex-1">
+                          <input
+                            className={`${INPUT} py-2 ${valid ? '' : 'ring-1 ring-danger/70'}`}
+                            value={value}
+                            onChange={(e) => updateMedia(index, 'url', e.target.value)}
+                            placeholder={MEDIA_PLACEHOLDERS[type]}
+                            disabled={busy}
+                            aria-label={`URL de ${MEDIA_LABELS[type].toLowerCase()}`}
+                          />
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[0.68rem] text-white/40">
+                            {!value.trim() ? (
+                              <span>Pega la URL del {MEDIA_LABELS[type].toLowerCase()}.</span>
+                            ) : valid ? (
+                              <>
+                                <span className="truncate">{mediaHost(value)}</span>
+                                <a
+                                  href={normalizeUrl(value)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-accent-soft hover:underline"
+                                >
+                                  Abrir ↗
+                                </a>
+                              </>
+                            ) : (
+                              <span className="text-danger">URL no válida</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => addMedia('video')}
+                disabled={busy}
+                className={BTN_GHOST}
+              >
+                + Video
+              </button>
+              <button
+                type="button"
+                onClick={() => addMedia('image')}
+                disabled={busy}
+                className={BTN_GHOST}
+              >
+                + Imagen
+              </button>
+              <button
+                type="button"
+                onClick={() => addMedia('link')}
+                disabled={busy}
+                className={BTN_GHOST}
+              >
+                + Enlace
+              </button>
+            </div>
           </div>
 
           {error && <p className="text-sm text-danger">{error}</p>}
