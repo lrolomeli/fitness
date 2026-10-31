@@ -38,7 +38,7 @@ backend/   # Express + sql.js
     services/ai.js          # Gemini (propuestas de recetas/ejercicios y swaps; JSON estricto)
     services/context.js     # arma el contexto enriquecido para la IA
     routes/                 # profile, preferences, plans, meals, recipes, exercises, routines,
-                            # training-weeks, workouts, progress, state
+                            # training-weeks, workouts, progress, state, public
   data/                     # persistencia runtime (fitness.db)
 frontend/  # Vite + React + Tailwind v4
   src/
@@ -53,6 +53,8 @@ frontend/  # Vite + React + Tailwind v4
     components/WeekForm.jsx  # crear/editar semanas y asignar rutinas a cada día
     components/TodayWorkout.jsx # rutina del día de la semana activa
     components/ExerciseSwapModal.jsx # cambiar un ejercicio del plan automático (local o con IA)
+    components/public/      # vista pública: hero, tarjetas, semana y galería multimedia
+    views/PublicWorkoutView.jsx # /training: entrenamiento de hoy y semana, solo lectura
     components/ui/          # primitivas (Card, Banner, Tabs, ...)
     hooks/ lib/ context/ views/
 ```
@@ -123,6 +125,19 @@ frontend/  # Vite + React + Tailwind v4
   personal) y estima sus macros con `estimator.js`; si falla la red, cae al
   recetario local. Para una app pública, TheMealDB pide una key de supporter.
   Se desactiva con `RECIPE_PROVIDER=none`.
+
+## Vista pública
+
+- **URL:** `/training` — no requiere iniciar sesión y es de **solo lectura**.
+- **Endpoint:** `GET /api/public/workout`, montado antes del middleware de sesión.
+  No expone perfil, récords ni datos privados.
+- Muestra el **entrenamiento de hoy** y el **plan completo de la semana**, con los
+  ejercicios del catálogo y su multimedia (imágenes, videos y enlaces).
+- Las imágenes se amplían en un visor y los videos de YouTube/Vimeo se reproducen
+  en un modal; no se cargan reproductores hasta que el usuario los abre.
+- La página se marca como `noindex` para no aparecer en buscadores aunque la URL
+  sea accesible para quien la tenga.
+- Desde **Entreno → Hoy** puedes copiar el enlace o abrir la vista pública.
 
 ## Macros estimados
 

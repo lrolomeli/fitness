@@ -160,6 +160,19 @@ export default function WorkoutsSection() {
     }
   };
 
+  const publicUrl = `${window.location.origin}/training`;
+
+  const copyPublicLink = async () => {
+    setError('');
+    setNotice('');
+    try {
+      await navigator.clipboard.writeText(publicUrl);
+      setNotice('Enlace público copiado al portapapeles');
+    } catch {
+      setNotice(`Copia este enlace para compartir: ${publicUrl}`);
+    }
+  };
+
   const saveRoutine = async (saved) => {
     setNotice(`Rutina «${saved.name}» guardada`);
     await reload();
@@ -228,7 +241,17 @@ export default function WorkoutsSection() {
       {error && <Banner variant="err">{error}</Banner>}
       {notice && <Banner variant="ok">{notice}</Banner>}
 
-      <SegmentedControl options={TABS} value={tab} onChange={setTab} />
+      <div className="flex flex-wrap items-center gap-2">
+        <SegmentedControl options={TABS} value={tab} onChange={setTab} className="flex-1" />
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button type="button" onClick={copyPublicLink} className={BTN_GHOST}>
+            Copiar enlace
+          </button>
+          <a href="/training" target="_blank" rel="noreferrer" className={BTN_GHOST}>
+            Vista pública ↗
+          </a>
+        </div>
+      </div>
 
       {tab === 'hoy' && (
         <TodayWorkout
